@@ -1,0 +1,14 @@
+---
+description: Haptic settings state — presets are implemented in the lab screen
+alwaysApply: true
+---
+
+# Вибрация: настройки уже есть (1.6.0)
+
+Экран «Проба спектра + вибрация» (`FftLabActivity`) содержит все настройки хаптики:
+
+- Пресеты срабатывания (`FeaturePrefs.hapticPreset`): `kick` (бочка, 40–130 Гц), `bass`, `rms`.
+- Ползунки: чувствительность (`hapticSensitivity` 0–100), мин. интервал (`hapticMinGap` 100–800 мс), сила (`hapticStrength` 0–100).
+- Детектор в `BeatHaptics.tick`: onset по flux выбранного источника, без предсказания темпа (пользователю не понравился «свой ритм»).
+
+Не переделывать логику ударов без явной просьбы — только крутить параметры/пресеты через существующие настройки.

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000"
+    android:orientation="vertical">
+
+    <android.opengl.GLSurfaceView
+        android:id="@+id/gl"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.2"
+        android:background="#FF101014">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/fft_lab_hint"
+                android:textColor="#FFB0B4C8"
+                android:textSize="13sp" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/haptic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/feat_haptics"
+                android:textColor="#FFFFFFFF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/haptic_preset_title"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
+
+            <RadioGroup
+                android:id="@+id/presetGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <RadioButton
+                    android:id="@+id/presetKick"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/haptic_preset_kick"
+                    android:textColor="#FFE8E8FF" />
+
+                <RadioButton
+                    android:id="@+id/presetBass"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/haptic_preset_bass"
+                    android:textColor="#FFE8E8FF" />
+
+                <RadioButton
+                    android:id="@+id/presetRms"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/haptic_preset_rms"
+                    android:textColor="#FFE8E8FF" />
+            </RadioGroup>
+
+            <TextView
+                android:id="@+id/hapticSensLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="#FFB0B4C8"
+                android:textSize="13sp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/hapticSens"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stepSize="1"
+                android:valueFrom="0"
+                android:valueTo="100" />
+
+            <TextView
+                android:id="@+id/hapticGapLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFB0B4C8"
+                android:textSize="13sp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/hapticGap"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stepSize="10"
+                android:valueFrom="100"
+                android:valueTo="800" />
+
+            <TextView
+                android:id="@+id/hapticStrengthLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFB0B4C8"
+                android:textSize="13sp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/hapticStrength"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stepSize="1"
+                android:valueFrom="0"
+                android:valueTo="100" />
+
+            <Button
+                android:id="@+id/pulse"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/haptic_pulse" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

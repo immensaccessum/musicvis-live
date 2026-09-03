@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/dots_desc"
+    android:settingsActivity="com.musicvis.live.HistogramSettingsActivity"
+    android:showMetadataInPreview="true"
+    android:thumbnail="@mipmap/ic_launcher" />

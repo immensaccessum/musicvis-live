@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature android:name="android.software.live_wallpaper" android:required="true" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+    <uses-feature android:name="android.software.app_widgets" android:required="false" />
+
+    <uses-permission
+        android:name="android.permission.RECORD_AUDIO"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="31" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-feature android:glEsVersion="0x00020000" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MusicVis"
+        tools:targetApi="33">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MusicVis">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".HistogramSettingsActivity"
+            android:exported="true"
+            android:label="@string/colors_title"
+            android:theme="@style/Theme.MusicVis" />
+
+        <activity
+            android:name=".FftLabActivity"
+            android:exported="false"
+            android:label="@string/fft_lab"
+            android:theme="@style/Theme.MusicVis" />
+
+        <activity
+            android:name=".FxSettingsActivity"
+            android:exported="false"
+            android:label="@string/fx_title"
+            android:theme="@style/Theme.MusicVis" />
+
+        <activity
+            android:name=".ModesInfoActivity"
+            android:exported="false"
+            android:label="@string/info_title"
+            android:theme="@style/Theme.MusicVis" />
+
+        <!-- Persist the in-app language choice (AppCompat per-app locales). -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+
+        <service
+            android:name=".wallpapers.IceWaveService"
+            android:exported="true"
+            android:label="@string/wallpaper_ice"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_ice" />
+        </service>
+
+        <service
+            android:name=".wallpapers.ClassicHistogramService"
+            android:exported="true"
+            android:label="@string/wallpaper_classic"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_classic" />
+        </service>
+
+        <service
+            android:name=".wallpapers.FftHistogramService"
+            android:exported="true"
+            android:label="@string/wallpaper_fft"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_fft" />
+        </service>
+
+        <service
+            android:name=".wallpapers.OctaveSpectrumService"
+            android:exported="true"
+            android:label="@string/wallpaper_octave"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_octave" />
+        </service>
+
+        <service
+            android:name=".wallpapers.WaterfallService"
+            android:exported="true"
+            android:label="@string/wallpaper_waterfall"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_waterfall" />
+        </service>
+
+        <service
+            android:name=".wallpapers.VuMeterService"
+            android:exported="true"
+            android:label="@string/wallpaper_vu"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_vu" />
+        </service>
+
+        <service
+            android:name=".wallpapers.DotsService"
+            android:exported="true"
+            android:label="@string/wallpaper_dots"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_dots" />
+        </service>
+
+        <service
+            android:name=".wallpapers.ScopeService"
+            android:exported="true"
+            android:label="@string/wallpaper_scope"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_scope" />
+        </service>
+
+        <service
+            android:name=".wallpapers.LightShowService"
+            android:exported="true"
+            android:label="@string/wallpaper_lightshow"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_lightshow" />
+        </service>
+
+        <service
+            android:name=".wallpapers.RadialSpectrumService"
+            android:exported="true"
+            android:label="@string/wallpaper_radial"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_radial" />
+        </service>
+
+        <service
+            android:name=".NowPlayingListener"
+            android:exported="true"
+            android:label="@string/nowplaying_service"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".HistogramWidget"
+            android:exported="true"
+            android:label="@string/widget_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_histogram" />
+        </receiver>
+    </application>
+</manifest>
