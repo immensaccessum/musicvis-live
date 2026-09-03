@@ -108,6 +108,7 @@ class FftLabActivity : AppCompatActivity() {
     }
 
     private inner class LabRenderer : GLSurfaceView.Renderer {
+        private val partyFx = PartyFx(this@FftLabActivity)
         private var gl = BarGlRenderer()
         private var texKey: String? = null
         private var bgColors: IntArray? = null
@@ -130,7 +131,8 @@ class FftLabActivity : AppCompatActivity() {
 
         override fun onDrawFrame(unused: GL10?) {
             fill()
-            haptics.tick(audio)
+            partyFx.tick(audio)
+            haptics.tick(audio, externalBeat = partyFx.beat)
             val key = HistogramColors.textureKey(this@FftLabActivity)
             if (key != texKey) {
                 texKey = key

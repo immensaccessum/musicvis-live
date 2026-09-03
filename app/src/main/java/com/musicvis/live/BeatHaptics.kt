@@ -13,6 +13,8 @@ import kotlin.math.max
  * Beat-synced vibration. The trigger source is a user preset:
  * kick (40–130 Hz front), any bass, or overall loudness.
  * Sensitivity scales the onset gate; min gap is the refractory period.
+ * For the default "kick" preset the caller may pass the PartyFx beat so the
+ * pulse lands exactly when a shockwave ring is born.
  */
 class BeatHaptics(context: Context) {
     private val app = context.applicationContext
@@ -28,12 +30,25 @@ class BeatHaptics(context: Context) {
 
     fun pulse() = fire()
 
-    fun tick(audio: AudioEngine, enabled: Boolean = FeaturePrefs.haptics(app)) {
+    fun tick(
+        audio: AudioEngine,
+        enabled: Boolean = FeaturePrefs.haptics(app),
+        externalBeat: Boolean? = null
+    ) {
         if (!enabled || audio.audioIdle) {
             prev *= 0.85f
             return
         }
-        val e = when (FeaturePrefs.hapticPreset(app)) {
+        val preset = FeaturePrefs.hapticPreset(app)
+        // Default preset follows the shared PartyFx detector: one beat = one ring = one pulse.
+        if (externalBeat != null && preset == "kick") {
+            if (!externalBeat) return
+            val gap = FeaturePrefs.hapticMinGap(app).toLong()
+            if (System.currentTimeMillis() - last < gap) return
+            fire()
+            return
+        }
+        val e = when (preset) {
             "bass" -> audio.bass
             "rms" -> audio.rmsRaw
             else -> audio.kick

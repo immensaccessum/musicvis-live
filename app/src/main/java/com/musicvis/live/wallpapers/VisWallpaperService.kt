@@ -18,6 +18,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.WindowInsets
 import com.musicvis.live.BackgroundPainter
+import com.musicvis.live.BeatHaptics
 import com.musicvis.live.FeaturePrefs
 import com.musicvis.live.PartyFx
 import com.musicvis.live.HistogramColors
@@ -51,6 +52,7 @@ abstract class VisWallpaperService : WallpaperService() {
         private var sensors: SensorManager? = null
         private val bgPainter = BackgroundPainter(this@VisWallpaperService)
         private val partyFx = PartyFx(this@VisWallpaperService)
+        private val haptics = BeatHaptics(this@VisWallpaperService)
         private var lastWidget = 0L
         private var lastColorKey: String? = null
         private var frame = 0
@@ -224,6 +226,7 @@ abstract class VisWallpaperService : WallpaperService() {
                     }
                     val track = if (FeaturePrefs.nowPlaying(this@VisWallpaperService)) NowPlaying.line else null
                     partyFx.tick(audio)
+                    haptics.tick(audio, externalBeat = partyFx.beat)
                     paint(
                         canvas,
                         PaintEnv(

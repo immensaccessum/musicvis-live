@@ -141,8 +141,8 @@ abstract class GlBarWallpaperService : WallpaperService() {
             if (!visible) return
             tiltBoost *= 0.9f
             fillHeights()
-            haptics.tick(audio)
             partyFx.tick(audio)
+            haptics.tick(audio, externalBeat = partyFx.beat)
             if (FeaturePrefs.party(this@GlBarWallpaperService)) {
                 for (i in heights.indices) heights[i] = (heights[i] * 1.35f).coerceAtMost(0.95f)
             }

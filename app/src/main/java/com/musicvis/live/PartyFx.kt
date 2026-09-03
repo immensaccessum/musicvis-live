@@ -22,6 +22,10 @@ class PartyFx(private val context: Context) {
     var flash = 0f
         private set
 
+    /** True only on the frame the detector fired; syncs haptics with the rings. */
+    var beat = false
+        private set
+
     // Ring ages in 0..1; negative slot = free.
     private val rings = FloatArray(5) { -1f }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -38,7 +42,7 @@ class PartyFx(private val context: Context) {
         prevKick = k
         fluxAvg = fluxAvg * 0.95f + flux * 0.05f
         val now = SystemClock.uptimeMillis()
-        val beat = !audio.audioIdle && flux > fluxAvg * 2.2f + 0.05f && now - lastBeat > 230
+        beat = !audio.audioIdle && flux > fluxAvg * 2.2f + 0.05f && now - lastBeat > 230
         if (beat) {
             lastBeat = now
             if (FeaturePrefs.flashOn(context)) flash = 1f
