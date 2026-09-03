@@ -8,3 +8,5 @@ local.properties
 captures/
 .kotlin/
 *.apk
+release.keystore
+keystore.properties
