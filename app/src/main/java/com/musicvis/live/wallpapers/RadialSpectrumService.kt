@@ -21,6 +21,8 @@ class RadialSpectrumService : VisWallpaperService() {
     private val smooth = FloatArray(BARS)
     private var palette = IntArray(0)
     private var palKey: String? = null
+    private var angle = 0f
+    private var lastMs = 0L
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         val key = HistogramColors.textureKey(this)
@@ -39,7 +41,13 @@ class RadialSpectrumService : VisWallpaperService() {
 
         val audio = env.audio
         val spectrum = audio.spectrum
-        val rot = env.timeMs * 0.00003f + (env.xOffset - 0.5f) * 0.8f
+
+        // Slow base rotation that speeds up on loud moments.
+        val dt = if (lastMs == 0L) 0f else (env.timeMs - lastMs).coerceAtMost(100L) / 1000f
+        lastMs = env.timeMs
+        val loud = if (audio.audioIdle) 0f else audio.rms.coerceIn(0f, 1f)
+        angle += (0.03f + loud * loud * 0.9f) * dt
+        val rot = angle + (env.xOffset - 0.5f) * 0.8f
 
         for (i in 0 until BARS) {
             val target = if (audio.audioIdle) {
