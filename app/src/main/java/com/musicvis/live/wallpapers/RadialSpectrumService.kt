@@ -35,11 +35,9 @@ class RadialSpectrumService : VisWallpaperService() {
     private var noteNames: List<String>? = null
     private val notePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
     }
-    private val tunerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        strokeCap = Paint.Cap.ROUND
-    }
+    private val tunerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         val key = HistogramColors.textureKey(this)
@@ -111,7 +109,11 @@ class RadialSpectrumService : VisWallpaperService() {
         }
     }
 
-    /** Tuner-style overlay: note name in the circle, cents bar below it. */
+    /**
+     * The note lives inside the circle's own geometry: twelve invisible dial
+     * positions around the ring, a soft glow at the current note (cents slide
+     * it towards the neighbour), and a quiet thin caption inside the core.
+     */
     private fun drawNote(canvas: Canvas, audio: AudioEngine, cx: Float, cy: Float, r0: Float, pulse: Float) {
         val hz = audio.pitchHz
         val active = hz > 30f && audio.pitchConf > 0.8f && !audio.audioIdle
@@ -126,31 +128,50 @@ class RadialSpectrumService : VisWallpaperService() {
         val octave = midi / 12 - 1
         val names = noteNames ?: getString(R.string.note_names).split(",").also { noteNames = it }
         val name = names.getOrElse(idx) { "?" }
+        val inTune = abs(cents) <= 10
 
         val a = (noteAlpha * 255).toInt().coerceIn(0, 255)
-        val noteColor = Color.HSVToColor(floatArrayOf(idx * 30f, 0.55f, 1f))
+        val noteColor = Color.HSVToColor(floatArrayOf(idx * 30f, 0.45f, 1f))
 
-        // Core glow in the note's own hue: the circle "reacts" to the note.
+        // Subtle core tint in the note's hue.
         corePaint.color = noteColor
-        corePaint.alpha = (noteAlpha * 55f).toInt()
-        canvas.drawCircle(cx, cy, r0 * (0.62f + pulse * 0.3f), corePaint)
+        corePaint.alpha = (noteAlpha * 40f).toInt()
+        canvas.drawCircle(cx, cy, r0 * (0.60f + pulse * 0.3f), corePaint)
 
-        notePaint.color = noteColor
-        notePaint.alpha = a
-        notePaint.textSize = r0 * 0.40f
-        canvas.drawText("$name$octave", cx, cy + notePaint.textSize * 0.35f, notePaint)
-
-        // Cents bar: -50 .. +50, marker turns white when within +-10 cents.
-        val half = r0 * 0.55f
-        val y = cy + r0 * 0.55f
-        tunerPaint.color = Color.argb(a / 3, 255, 255, 255)
-        tunerPaint.strokeWidth = 4f
-        canvas.drawLine(cx - half, y, cx + half, y, tunerPaint)
-        canvas.drawLine(cx, y - 10f, cx, y + 10f, tunerPaint)
-        val mx = cx + half * (cents / 50f)
-        tunerPaint.color = if (abs(cents) <= 10) Color.argb(a, 255, 255, 255) else noteColor
+        // Chromatic dial just inside the ring: 12 o'clock = C, clockwise.
+        val sector = (Math.PI * 2.0 / 12.0).toFloat()
+        val rr = r0 * 0.80f
+        tunerPaint.style = Paint.Style.FILL
+        for (i in 0 until 12) {
+            val ta = -Math.PI.toFloat() / 2f + i * sector
+            tunerPaint.color = Color.argb(a / 7, 255, 255, 255)
+            canvas.drawCircle(cx + cos(ta) * rr, cy + sin(ta) * rr, 3f, tunerPaint)
+        }
+        // Glow marker slides with cents between the neighbouring positions.
+        val ma = -Math.PI.toFloat() / 2f + (idx + cents / 100f) * sector
+        val mx = cx + cos(ma) * rr
+        val my = cy + sin(ma) * rr
+        val markColor = if (inTune) Color.WHITE else noteColor
+        tunerPaint.color = markColor
+        tunerPaint.alpha = (noteAlpha * 45f).toInt()
+        canvas.drawCircle(mx, my, 24f + pulse * 10f, tunerPaint)
+        tunerPaint.alpha = (noteAlpha * 110f).toInt()
+        canvas.drawCircle(mx, my, 12f, tunerPaint)
         tunerPaint.alpha = a
-        canvas.drawCircle(mx, y, 9f, tunerPaint)
+        canvas.drawCircle(mx, my, 5f, tunerPaint)
+
+        // Quiet caption inside the core, octave as superscript: "ля⁴".
+        notePaint.color = Color.WHITE
+        notePaint.alpha = (noteAlpha * 185f).toInt()
+        notePaint.textSize = r0 * 0.24f
+        canvas.drawText(name + superscript(octave), cx, cy + notePaint.textSize * 0.33f, notePaint)
+    }
+
+    private fun superscript(n: Int): String {
+        val digits = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+        val abs = kotlin.math.abs(n)
+        val s = abs.toString().map { digits[it - '0'] }.joinToString("")
+        return if (n < 0) "⁻$s" else s
     }
 
     private fun sampleBand(spectrum: FloatArray, bar: Int): Float {
