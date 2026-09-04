@@ -60,6 +60,8 @@
     <string name="hint">OriginOS 6: icon colors from the palette, 120 Hz, parallax, tilt, cutout, widget, track from the player.</string>
 
     <string name="feat_mic">Microphone instead of system audio</string>
+    <string name="feat_note">Show hummed note (mic, radial spectrum)</string>
+    <string name="note_names">C,C#,D,D#,E,F,F#,G,G#,A,A#,B</string>
     <string name="feat_bg">Background: palette gradient (breathes with music)</string>
     <string name="fx_title">Background and effects</string>
     <string name="fx_hint">Everything here works on top of any wallpaper mode and applies instantly. Flash and rings follow the kick drum.</string>

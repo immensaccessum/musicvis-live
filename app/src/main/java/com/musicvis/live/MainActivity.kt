@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         binding.language.setOnClickListener { showLanguageDialog() }
 
         binding.micSource.isChecked = FeaturePrefs.micSource(this)
+        binding.noteDisplay.isChecked = FeaturePrefs.noteDisplay(this)
         binding.tilt.isChecked = FeaturePrefs.tilt(this)
         binding.nowPlaying.isChecked = FeaturePrefs.nowPlaying(this)
         binding.touchFx.isChecked = FeaturePrefs.touchFx(this)
@@ -81,6 +82,7 @@ class MainActivity : AppCompatActivity() {
             FeaturePrefs.setMicSource(this, v)
             AudioEngine.get(this).onSourcePrefChanged()
         }
+        binding.noteDisplay.setOnCheckedChangeListener { _, v -> FeaturePrefs.setNoteDisplay(this, v) }
         binding.tilt.setOnCheckedChangeListener { _, v -> FeaturePrefs.setTilt(this, v) }
         binding.nowPlaying.setOnCheckedChangeListener { _, v -> FeaturePrefs.setNowPlaying(this, v) }
         binding.touchFx.setOnCheckedChangeListener { _, v -> FeaturePrefs.setTouchFx(this, v) }

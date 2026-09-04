@@ -55,6 +55,14 @@ class AudioEngine private constructor(context: Context) {
     @Volatile var peak = false
         private set
 
+    /** Detected voice pitch in Hz (mic mode only), 0 when none. */
+    @Volatile var pitchHz = 0f
+        private set
+
+    /** Pitch clarity 0..1: how periodic the signal is (mic mode only). */
+    @Volatile var pitchConf = 0f
+        private set
+
     private var visualizer: Visualizer? = null
     @Volatile private var running = false
     @Volatile private var micMode = false
@@ -102,10 +110,16 @@ class AudioEngine private constructor(context: Context) {
         bass = 0f
         kick = 0f
         peak = false
+        pitchHz = 0f
+        pitchConf = 0f
     }
 
     private fun startCapture() {
         micMode = FeaturePrefs.micSource(appContext)
+        if (!micMode) {
+            pitchHz = 0f
+            pitchConf = 0f
+        }
         if (micMode) {
             startMic()
         } else {
@@ -367,6 +381,9 @@ class AudioEngine private constructor(context: Context) {
                     fftBytes[k * 2 + 1] = clamp8(im[k] * 2f / n)
                 }
                 consumeFft(fftBytes, rate)
+                // Pitch from the raw 16-bit samples, every other block (~20/s).
+                pitchTick++
+                if (pitchTick and 1 == 0) detectPitch(buf, if (read >= n) n else read, rate)
             }
             rec.stop()
         } catch (t: Throwable) {
@@ -377,6 +394,76 @@ class AudioEngine private constructor(context: Context) {
     }
 
     private fun clamp8(v: Float): Byte = v.toInt().coerceIn(-128, 127).toByte()
+
+    private var pitchTick = 0
+
+    /**
+     * Normalized autocorrelation pitch detector for the humming range
+     * (70–1000 Hz). Runs on the mic thread, so the render loop never pays.
+     */
+    private fun detectPitch(buf: ShortArray, n: Int, rate: Int) {
+        var energy = 0.0
+        for (i in 0 until n) {
+            val s = buf[i].toDouble()
+            energy += s * s
+        }
+        // Too quiet to be a deliberate hum.
+        if (sqrt(energy / n) < 220.0) {
+            pitchHz = 0f
+            pitchConf = 0f
+            return
+        }
+        val minLag = rate / 1000
+        val maxLag = (rate / 70).coerceAtMost(n - 64)
+        if (maxLag <= minLag) return
+        val norms = FloatArray(maxLag + 1)
+        var bestLag = -1
+        var best = 0f
+        for (lag in minLag..maxLag) {
+            var ac = 0.0
+            var e1 = 0.0
+            var e2 = 0.0
+            var i = 0
+            while (i + lag < n) {
+                val a = buf[i].toFloat()
+                val b = buf[i + lag].toFloat()
+                ac += a * b
+                e1 += a * a
+                e2 += b * b
+                i++
+            }
+            val v = (ac / (sqrt(e1 * e2) + 1e-9)).toFloat()
+            norms[lag] = v
+            if (v > best) {
+                best = v
+                bestLag = lag
+            }
+        }
+        if (bestLag < 0 || best < 0.5f) {
+            pitchHz = 0f
+            pitchConf = 0f
+            return
+        }
+        // Octave fix: the true period is often the *smallest* lag whose peak is
+        // nearly as strong as the global best.
+        var lag = bestLag
+        for (l in (minLag + 1) until bestLag) {
+            if (norms[l] > best * 0.92f && norms[l] >= norms[l - 1] && norms[l] >= norms[l + 1]) {
+                lag = l
+                break
+            }
+        }
+        // Parabolic refinement between neighbouring lags.
+        val c0 = norms[(lag - 1).coerceAtLeast(minLag)]
+        val c1 = norms[lag]
+        val c2 = norms[(lag + 1).coerceAtMost(maxLag)]
+        val denom = c0 - 2f * c1 + c2
+        val delta = if (kotlin.math.abs(denom) > 1e-6f) {
+            (0.5f * (c0 - c2) / denom).coerceIn(-0.5f, 0.5f)
+        } else 0f
+        pitchHz = rate / (lag + delta)
+        pitchConf = c1.coerceIn(0f, 1f)
+    }
 
     /** In-place iterative radix-2 FFT; array size must be a power of two. */
     private fun fft(re: FloatArray, im: FloatArray) {

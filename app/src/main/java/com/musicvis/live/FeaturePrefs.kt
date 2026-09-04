@@ -17,6 +17,7 @@ object FeaturePrefs {
     fun hapticSensitivity(c: Context) = p(c).getInt("haptic_sens", 50)
     fun hapticMinGap(c: Context) = p(c).getInt("haptic_gap", 250)
     fun micSource(c: Context) = p(c).getBoolean("mic_source", false)
+    fun noteDisplay(c: Context) = p(c).getBoolean("note_display", false)
     fun bgGradient(c: Context) = p(c).getBoolean("bg_gradient", false)
     fun fxFlash(c: Context) = p(c).getBoolean("fx_flash", false)
     fun fxColorCycle(c: Context) = p(c).getBoolean("fx_cycle", false)
@@ -41,6 +42,7 @@ object FeaturePrefs {
     fun setHapticSensitivity(c: Context, v: Int) = p(c).edit { putInt("haptic_sens", v.coerceIn(0, 100)) }
     fun setHapticMinGap(c: Context, v: Int) = p(c).edit { putInt("haptic_gap", v.coerceIn(100, 800)) }
     fun setMicSource(c: Context, v: Boolean) = p(c).edit { putBoolean("mic_source", v) }
+    fun setNoteDisplay(c: Context, v: Boolean) = p(c).edit { putBoolean("note_display", v) }
     fun setBgGradient(c: Context, v: Boolean) = p(c).edit { putBoolean("bg_gradient", v) }
     fun setFxFlash(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_flash", v) }
     fun setFxColorCycle(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_cycle", v) }

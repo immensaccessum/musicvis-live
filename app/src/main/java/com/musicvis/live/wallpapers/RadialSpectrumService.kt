@@ -3,9 +3,16 @@ package com.musicvis.live.wallpapers
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
+import com.musicvis.live.FeaturePrefs
+import com.musicvis.live.R
 import com.musicvis.live.HistogramColors
 import com.musicvis.live.audio.AudioEngine
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -23,6 +30,16 @@ class RadialSpectrumService : VisWallpaperService() {
     private var palKey: String? = null
     private var angle = 0f
     private var lastMs = 0L
+    private var dispHz = 0f
+    private var noteAlpha = 0f
+    private var noteNames: List<String>? = null
+    private val notePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    private val tunerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeCap = Paint.Cap.ROUND
+    }
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         val key = HistogramColors.textureKey(this)
@@ -75,6 +92,10 @@ class RadialSpectrumService : VisWallpaperService() {
         corePaint.color = Color.argb(70, Color.red(mid), Color.green(mid), Color.blue(mid))
         canvas.drawCircle(cx, cy, r0 * (0.55f + pulse * 0.35f), corePaint)
 
+        if (FeaturePrefs.noteDisplay(this)) {
+            drawNote(canvas, audio, cx, cy, r0, pulse)
+        }
+
         if (env.touchBoost > 0.05f) {
             corePaint.color = Color.argb((env.touchBoost * 80).toInt(), 200, 225, 255)
             canvas.drawCircle(env.touchX * w, env.touchY * h, 40f + env.touchBoost * 140f, corePaint)
@@ -88,6 +109,48 @@ class RadialSpectrumService : VisWallpaperService() {
             }
             canvas.drawText(title, w / 2f, h - 80f, tp)
         }
+    }
+
+    /** Tuner-style overlay: note name in the circle, cents bar below it. */
+    private fun drawNote(canvas: Canvas, audio: AudioEngine, cx: Float, cy: Float, r0: Float, pulse: Float) {
+        val hz = audio.pitchHz
+        val active = hz > 30f && audio.pitchConf > 0.8f && !audio.audioIdle
+        noteAlpha += ((if (active) 1f else 0f) - noteAlpha) * 0.12f
+        if (active) dispHz = if (dispHz <= 0f) hz else dispHz * 0.7f + hz * 0.3f
+        if (noteAlpha < 0.05f || dispHz <= 0f) return
+
+        val midi = (69.0 + 12.0 * ln(dispHz / 440.0) / ln(2.0)).roundToInt()
+        val noteFreq = 440.0 * 2.0.pow((midi - 69) / 12.0)
+        val cents = (1200.0 * ln(dispHz / noteFreq) / ln(2.0)).roundToInt().coerceIn(-50, 50)
+        val idx = ((midi % 12) + 12) % 12
+        val octave = midi / 12 - 1
+        val names = noteNames ?: getString(R.string.note_names).split(",").also { noteNames = it }
+        val name = names.getOrElse(idx) { "?" }
+
+        val a = (noteAlpha * 255).toInt().coerceIn(0, 255)
+        val noteColor = Color.HSVToColor(floatArrayOf(idx * 30f, 0.55f, 1f))
+
+        // Core glow in the note's own hue: the circle "reacts" to the note.
+        corePaint.color = noteColor
+        corePaint.alpha = (noteAlpha * 55f).toInt()
+        canvas.drawCircle(cx, cy, r0 * (0.62f + pulse * 0.3f), corePaint)
+
+        notePaint.color = noteColor
+        notePaint.alpha = a
+        notePaint.textSize = r0 * 0.40f
+        canvas.drawText("$name$octave", cx, cy + notePaint.textSize * 0.35f, notePaint)
+
+        // Cents bar: -50 .. +50, marker turns white when within +-10 cents.
+        val half = r0 * 0.55f
+        val y = cy + r0 * 0.55f
+        tunerPaint.color = Color.argb(a / 3, 255, 255, 255)
+        tunerPaint.strokeWidth = 4f
+        canvas.drawLine(cx - half, y, cx + half, y, tunerPaint)
+        canvas.drawLine(cx, y - 10f, cx, y + 10f, tunerPaint)
+        val mx = cx + half * (cents / 50f)
+        tunerPaint.color = if (abs(cents) <= 10) Color.argb(a, 255, 255, 255) else noteColor
+        tunerPaint.alpha = a
+        canvas.drawCircle(mx, y, 9f, tunerPaint)
     }
 
     private fun sampleBand(spectrum: FloatArray, bar: Int): Float {
