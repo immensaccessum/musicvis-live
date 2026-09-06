@@ -8,11 +8,11 @@ import com.musicvis.live.PaletteCache
 import kotlin.math.sin
 
 /**
- * Geometry-Dash style auto-runner, cheated onto the beat.
- *
- * Speed is locked so exactly [TPB] tiles pass per beat. Silence is a flat
- * road. Music raises terraces with the bass and carves a gap only on a
- * real beat; jump duration is the gap width / speed (one or two beats).
+ * Geometry-Dash style auto-runner with two generators:
+ *  1) Far tape: a solid terrace (bass height). No pits.
+ *  2) Live rewrite: the current beat carves a gap *right in front of the
+ *     cube* and plants a landing. Silence fills those gaps back in.
+ * Columns under the cube are never deleted.
  */
 class RhythmRunnerService : VisWallpaperService() {
     private val pal = PaletteCache(64)
@@ -38,9 +38,7 @@ class RhythmRunnerService : VisWallpaperService() {
     private val levels = ArrayDeque<Int>()
     private val spikeAt = ArrayDeque<Boolean>()
     private val padAt = ArrayDeque<Boolean>()
-    private val planned = ArrayDeque<Cell>()
     private var scroll = 0f
-    private var genCol = 0
     private var lastLevel = 1
 
     private var smoothBass = 0f
@@ -63,12 +61,8 @@ class RhythmRunnerService : VisWallpaperService() {
 
     private var lastBeatMs = 0L
     private var beatPeriod = 0.5f
-    private var phase = 0
-    private var phaseLocked = false
     private var pendingJumps = 0
-    /** Last non-idle audio snapshot the planner is allowed to see. */
     private var musicOn = false
-    private var musicBass = 0f
     private var musicRms = 0f
     private var musicKick = 0f
 
@@ -89,13 +83,12 @@ class RhythmRunnerService : VisWallpaperService() {
 
         musicOn = !idle
         if (!idle) {
-            musicBass = audio.bass
             musicRms = rms
             musicKick = audio.kick
-        }
-        val bassTarget = if (idle) 0f else audio.bass
-        smoothBass = if (idle) 0f else {
-            if (bassTarget > smoothBass) bassTarget else smoothBass * 0.94f
+            val bassTarget = audio.bass
+            smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.9f
+        } else {
+            smoothBass = 0f
         }
 
         if (env.beat && !idle) {
@@ -105,7 +98,7 @@ class RhythmRunnerService : VisWallpaperService() {
             }
             lastBeatMs = env.timeMs
             strobe = 1f
-            pendingJumps = (pendingJumps + 1).coerceAtMost(5)
+            pendingJumps = (pendingJumps + 1).coerceAtMost(3)
         }
 
         val block = w / 18f
@@ -114,13 +107,13 @@ class RhythmRunnerService : VisWallpaperService() {
         spd = if (spd == 0f) speedTarget else spd * 0.9f + speedTarget * 0.1f
         val speed = spd
 
-        while (levels.size < TAPE) appendColumn()
+        while (levels.size < TAPE) appendSolid()
         scroll += speed * dt
         while (scroll >= block) {
             levels.removeFirst()
             spikeAt.removeFirst()
             padAt.removeFirst()
-            appendColumn()
+            appendSolid()
             scroll -= block
         }
 
@@ -128,25 +121,23 @@ class RhythmRunnerService : VisWallpaperService() {
         fun colOf(x: Float): Int = ((x + scroll) / block).toInt().coerceIn(0, levels.size - 1)
         fun colX(c: Int): Float = (c + 0.5f) * block - scroll
         fun floorY(lvl: Int): Float = if (lvl == PIT) h * 2f else base - lvl * block
-        fun groundY(x: Float): Float = floorY(levels[colOf(x)])
+        fun safe(c: Int) = c in levels.indices && levels[c] != PIT && !spikeAt[c]
 
-        if (env.beat && !idle && !phaseLocked) {
-            val absCube = genCol - levels.size + colOf(w * 0.26f)
-            phase = (TPB - ((absCube % TPB) + TPB) % TPB) % TPB
-            phaseLocked = true
-        }
+        val cubeX = w * 0.26f
+        val here = colOf(cubeX)
+        reshapeAhead(here)
 
         drawStage(canvas, env, w, h, palette, rms, idle)
 
-        val cubeX = w * 0.26f
         val cube = block * 1.05f
-        val groundNow = groundY(cubeX)
-        if (cubeBottom == 0f) cubeBottom = groundNow
-        val here = colOf(cubeX)
-        fun safe(c: Int) = c in levels.indices && levels[c] != PIT && !spikeAt[c]
         fun landingAfter(from: Int): Int {
             var i = (from + 1).coerceAtMost(levels.size - 1)
-            while (i < levels.size - 1 && !safe(i)) i++
+            while (i < levels.size && !safe(i)) i++
+            if (i >= levels.size || !safe(i)) {
+                val land = (from + TPB).coerceIn(from + 1, levels.size - 1)
+                fillCell(land, lastLevel.coerceAtLeast(1))
+                return land
+            }
             return i
         }
         fun launch(from: Int) {
@@ -167,9 +158,11 @@ class RhythmRunnerService : VisWallpaperService() {
             grav = 8f * jh / (jumpT * jumpT)
             vy = grav * jumpT / 2f
         }
+
+        val groundNow = floorY(if (levels[here] == PIT) lastLevel else levels[here])
+        if (cubeBottom == 0f) cubeBottom = groundNow
         if (!airborne) {
             val nxt = (here + 1).coerceAtMost(levels.size - 1)
-            // Never walk onto a spike or step into a pit. Jump from the safe tile before.
             val dangerAhead = nxt > here && (
                 levels[nxt] == PIT || spikeAt[nxt] ||
                     (levels[nxt] != PIT && levels[nxt] != levels[here])
@@ -177,7 +170,7 @@ class RhythmRunnerService : VisWallpaperService() {
             if (!safe(here) || padAt[here] || dangerAhead) {
                 launch(here)
             } else {
-                cubeBottom = groundNow
+                cubeBottom = floorY(levels[here])
             }
         }
         if (airborne) {
@@ -185,18 +178,17 @@ class RhythmRunnerService : VisWallpaperService() {
             vy -= grav * dt
             if (rotating) rot += 180f / jumpT * dt
             val c = colOf(cubeX)
-            val floor = groundY(cubeX)
-            // Refuse to land on a spike or in a pit — keep flying to the next safe tile.
+            val floor = if (safe(c)) floorY(levels[c]) else h * 2f
             if (vy < 0f && cubeBottom >= floor && safe(c)) {
                 cubeBottom = floor
                 vy = 0f
                 rot = 0f
                 airborne = false
                 rotating = false
-            } else if (vy < 0f && !safe(c) && cubeBottom > base + block * 2f) {
-                // Last-ditch: we dropped under the world. Snap to the next safe tile.
-                val land = landingAfter(c)
-                cubeBottom = floorY(if (levels[land] == PIT) lastLevel else levels[land])
+            } else if (!safe(c) && cubeBottom > base + block) {
+                // Emergency floor: spawn a block under the cube instead of falling away.
+                fillCell(c, lastLevel.coerceAtLeast(1))
+                cubeBottom = floorY(levels[c])
                 vy = 0f
                 rot = 0f
                 airborne = false
@@ -302,69 +294,75 @@ class RhythmRunnerService : VisWallpaperService() {
         if (strobe < 0.02f) strobe = 0f
     }
 
-    private fun appendColumn() {
-        if (planned.isEmpty()) planSetPiece()
-        val cell = planned.removeFirst()
-        if (cell.level != PIT) lastLevel = cell.level
-        levels.addLast(cell.level)
-        spikeAt.addLast(cell.spike)
-        padAt.addLast(cell.pad)
-        genCol++
+    /** Far generator: only a solid terrace. Gaps are stamped live. */
+    private fun appendSolid() {
+        val lvl = if (musicOn) (smoothBass * 4.2f).toInt().coerceIn(0, 4) else 1
+        lastLevel = lvl
+        levels.addLast(lvl)
+        spikeAt.addLast(false)
+        padAt.addLast(false)
     }
 
-    private fun absPlanned(): Int = genCol + planned.size
-
-    private fun onBeat(abs: Int): Boolean = ((abs + phase) % TPB + TPB) % TPB == 0
-
-    private fun alignToBeat() {
-        while (!onBeat(absPlanned())) {
-            planned.addLast(Cell(lastLevel, spike = false, pad = false))
-        }
-    }
-
-    private fun carveToNextBeat() {
-        do {
-            planned.addLast(Cell(PIT, spike = false, pad = false))
-        } while (!onBeat(absPlanned()))
+    private fun fillCell(c: Int, level: Int) {
+        if (c !in levels.indices) return
+        levels[c] = level
+        spikeAt[c] = false
+        padAt[c] = false
+        lastLevel = level
     }
 
     /**
-     * Silence = a flat road, no pits. Music = height from bass, a jump only
-     * when a real beat is queued. Gaps are carved solely for those jumps.
+     * Second pass: rewrite tiles already on the tape, starting one cell
+     * in front of the cube. Never delete the column under him.
      */
-    private fun planSetPiece() {
-        alignToBeat()
-        if (!musicOn && pendingJumps == 0) {
-            lastLevel = 1
-            planned.addLast(Cell(1, spike = false, pad = false))
-            while (!onBeat(absPlanned())) {
-                planned.addLast(Cell(1, spike = false, pad = false))
-            }
-            return
-        }
-        // Terrace height follows the bass: quiet verse = low, drop = high.
-        val want = (smoothBass * 4.2f).toInt().coerceIn(0, 4)
-        if (pendingJumps > 0) {
-            pendingJumps--
-            val longJump = pendingJumps > 0 && musicRms > 0.55f
-            if (longJump) pendingJumps--
-            val pad = musicKick > 0.45f && musicRms > 0.4f
-            lastLevel = want
-            planned.addLast(Cell(lastLevel, spike = !pad, pad = pad))
-            if (longJump) {
-                carveToNextBeat()
-                planned.addLast(Cell(PIT, spike = false, pad = false))
-            }
-            carveToNextBeat()
-            lastLevel = (smoothBass * 4.2f).toInt().coerceIn(0, 4)
-            planned.addLast(Cell(lastLevel, spike = false, pad = false))
-            return
-        }
-        // Between beats: keep running on a solid terrace. No fake gaps.
+    private fun reshapeAhead(here: Int) {
+        if (levels.isEmpty()) return
+        val want = if (musicOn) (smoothBass * 4.2f).toInt().coerceIn(0, 4) else 1
         lastLevel = want
-        planned.addLast(Cell(lastLevel, spike = false, pad = false))
-        while (!onBeat(absPlanned())) {
-            planned.addLast(Cell(lastLevel, spike = false, pad = false))
+
+        if (!musicOn) {
+            for (i in here until levels.size) fillCell(i, 1)
+            return
+        }
+
+        val hold = if (airborne) {
+            var i = (here + 1).coerceAtMost(levels.size - 1)
+            while (i < levels.size && (levels[i] == PIT || spikeAt[i])) i++
+            (i + 1).coerceAtMost(levels.size)
+        } else {
+            (here + 1).coerceAtMost(levels.size)
+        }
+
+        for (i in hold until levels.size) {
+            if (levels[i] != PIT) levels[i] = want
+        }
+
+        if (airborne || pendingJumps == 0) return
+        if (here + 2 + TPB >= levels.size) return
+        pendingJumps--
+        val takeoff = here + 1
+        val pad = musicKick > 0.45f && musicRms > 0.4f
+        levels[takeoff] = want
+        spikeAt[takeoff] = !pad
+        padAt[takeoff] = pad
+        val gap = if (pendingJumps > 0 && musicRms > 0.55f) {
+            pendingJumps--
+            TPB * 2 - 1
+        } else {
+            TPB - 1
+        }
+        for (i in 1..gap) {
+            val c = takeoff + i
+            if (c < levels.size - 1) {
+                levels[c] = PIT
+                spikeAt[c] = false
+                padAt[c] = false
+            }
+        }
+        val land = (takeoff + gap + 1).coerceAtMost(levels.size - 1)
+        fillCell(land, want)
+        for (i in land + 1 until (land + 4).coerceAtMost(levels.size)) {
+            if (levels[i] == PIT) fillCell(i, want)
         }
     }
 
@@ -425,14 +423,11 @@ class RhythmRunnerService : VisWallpaperService() {
         )
     }
 
-    private data class Cell(val level: Int, val spike: Boolean, val pad: Boolean)
-
     companion object {
         private const val SKY_BARS = 28
         private const val TRAIL = 26
         private const val PIT = -100
-        private const val TAPE = 60
-        /** Tiles that scroll past per beat. Speed = TPB * block / period. */
+        private const val TAPE = 36
         private const val TPB = 3
     }
 }
