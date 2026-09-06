@@ -42,16 +42,25 @@ class RhythmRunnerService : VisWallpaperService() {
     // Spikes: screen x positions moving left.
     private val spikes = ArrayDeque<Float>()
 
-    // Cube physics: offset above the ground, up is positive.
-    private var yOff = 0f
+    // Cube physics: absolute bottom Y, vy is up-positive.
+    private var cubeBottom = 0f
     private var vy = 0f
-    private var jumping = false
+    private var airborne = false
+    private var rotating = false
     private var rot = 0f
-    private var cubeBaseY = 0f
     private var idleTimer = 0f
     private var lastMs = 0L
     private var strobe = 0f
     private val skyline = FloatArray(SKY_BARS)
+
+    // Beat tempo estimate: spikes are planted a whole number of beats away
+    // from the cube, so the jump apex lands right on a beat.
+    private var lastBeatMs = 0L
+    private var beatPeriod = 0.5f
+
+    // Terrain generator state: ±1 block steps with a minimum plateau length.
+    private var lastLevel = 0
+    private var run = 0
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         pal.refresh(this)
@@ -95,55 +104,92 @@ class RhythmRunnerService : VisWallpaperService() {
         // ---- Far plane: the concert ----
         drawStage(canvas, env, w, h, palette, rms, idle)
 
-        // ---- Spikes ----
+        // ---- Spikes: planted a whole number of beats away from the cube ----
         val spikeW = block * 1.05f
         val jumpT = 0.6f
-        if (env.beat && !idle &&
-            (spikes.isEmpty() || spikes.last() <= w + spikeW - speed * jumpT * 1.35f)
-        ) {
-            spikes.addLast(w + spikeW)
+        val cubeX = w * 0.28f
+        if (env.beat) {
+            if (lastBeatMs != 0L) {
+                val iv = (env.timeMs - lastBeatMs) / 1000f
+                if (iv in 0.25f..1.5f) beatPeriod = beatPeriod * 0.7f + iv * 0.3f
+            }
+            lastBeatMs = env.timeMs
+            if (!idle) {
+                val beatDist = (beatPeriod * speed).coerceAtLeast(1f)
+                val n = kotlin.math.ceil(((w + spikeW * 0.5f) - cubeX) / beatDist)
+                val sx = cubeX + n * beatDist
+                if (spikes.isEmpty() || sx - spikes.last() >= speed * jumpT * 1.35f) {
+                    spikes.addLast(sx)
+                }
+            }
         }
         for (i in spikes.indices) spikes[i] -= speed * dt
         while (spikes.isNotEmpty() && spikes.first() < -spikeW * 2) spikes.removeFirst()
 
-        // ---- Cube ----
-        val cubeX = w * 0.28f
+        // ---- Cube: real physics — jumps walls, falls off ledges ----
         val cube = block * 1.15f
         val jumpH = h * 0.16f
-        val g = 8f * jumpH / (jumpT * jumpT)
-        if (!jumping) {
-            val trigger = speed * jumpT / 2f
-            for (s in spikes) {
-                val d = s - cubeX
-                if (d > 0f && d <= trigger) {
-                    jumping = true
-                    vy = g * jumpT / 2f
-                    break
+        val grav = 8f * jumpH / (jumpT * jumpT)
+        val groundNow = groundY(cubeX)
+        if (cubeBottom == 0f) cubeBottom = groundNow
+        if (!airborne) {
+            if (cubeBottom < groundNow - 1f) {
+                // The ground fell away: drop off the ledge.
+                airborne = true
+                rotating = false
+                vy = 0f
+            } else {
+                cubeBottom = groundNow
+                val trigger = speed * jumpT / 2f
+                var jump = false
+                for (s in spikes) {
+                    val d = s - cubeX
+                    if (d > 0f && d <= trigger) {
+                        jump = true
+                        break
+                    }
                 }
-            }
-            if (idle) {
-                idleTimer += dt
-                if (idleTimer > 1.6f) {
-                    idleTimer = 0f
-                    jumping = true
-                    vy = g * jumpT / 2f
+                if (!jump) {
+                    // A wall ahead must be jumped, not ridden.
+                    val cur = terrain[colOf(cubeX)]
+                    var c = colOf(cubeX) + 1
+                    while (c < terrain.size) {
+                        val dx = c * block - scroll - cubeX
+                        if (dx > trigger) break
+                        if (terrain[c] > cur) {
+                            if (dx > 0f) jump = true
+                            break
+                        }
+                        c++
+                    }
+                }
+                if (idle && !jump) {
+                    idleTimer += dt
+                    if (idleTimer > 1.6f) {
+                        idleTimer = 0f
+                        jump = true
+                    }
+                }
+                if (jump) {
+                    airborne = true
+                    rotating = true
+                    vy = grav * jumpT / 2f
                 }
             }
         }
-        if (jumping) {
-            yOff += vy * dt
-            vy -= g * dt
-            rot += 180f / jumpT * dt
-            if (yOff <= 0f && vy < 0f) {
-                yOff = 0f
+        if (airborne) {
+            cubeBottom -= vy * dt
+            vy -= grav * dt
+            if (rotating) rot += 180f / jumpT * dt
+            val floor = groundY(cubeX)
+            if (vy < 0f && cubeBottom >= floor) {
+                cubeBottom = floor
                 vy = 0f
                 rot = 0f
-                jumping = false
+                airborne = false
+                rotating = false
             }
         }
-        // Smooth the base over block steps so the cube doesn't teleport.
-        val targetBase = groundY(cubeX)
-        cubeBaseY = if (cubeBaseY == 0f) targetBase else cubeBaseY + (targetBase - cubeBaseY) * 0.35f
 
         // ---- Ground: blocky steps, GD style ----
         groundFill.color = dim(palette[56], 0.30f)
@@ -191,8 +237,8 @@ class RhythmRunnerService : VisWallpaperService() {
             canvas.drawPath(spikePath, groundLine)
         }
 
-        // ---- Cube ----
-        val cy = cubeBaseY - yOff - cube / 2f
+        // ---- Cube drawing ----
+        val cy = cubeBottom - cube / 2f
         cubePaint.color = palette[30]
         eyePaint.color = dim(palette[56], 0.25f)
         canvas.save()
@@ -260,7 +306,20 @@ class RhythmRunnerService : VisWallpaperService() {
         canvas.drawRect(0f, horizon, w, horizon + 3f, stagePaint)
     }
 
-    private fun level(): Int = (smoothBass * 3.4f).toInt().coerceIn(0, 3)
+    /** Next terrain column: ±1 block steps only, plateaus of 4+ columns. */
+    private fun level(): Int {
+        val want = (smoothBass * 3.4f).toInt().coerceIn(0, 3)
+        if (run < 4) {
+            run++
+            return lastLevel
+        }
+        val step = (want - lastLevel).coerceIn(-1, 1)
+        if (step != 0) {
+            lastLevel += step
+            run = 1
+        }
+        return lastLevel
+    }
 
     private fun dim(c: Int, k: Float): Int = Color.rgb(
         (Color.red(c) * k).toInt(),
