@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import com.musicvis.live.HistogramColors
+import com.musicvis.live.PaletteCache
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.sqrt
@@ -22,16 +22,11 @@ class WaterfallService : VisWallpaperService() {
     private val paint = Paint().apply { isFilterBitmap = true }
     private val src = Rect(0, 0, cols, rows)
     private val dst = Rect()
-    private var palette = IntArray(0)
-    private var palKey: String? = null
+    private val pal = PaletteCache(256)
     private var phase = 0
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
-        val key = HistogramColors.textureKey(this)
-        if (key != palKey) {
-            palKey = key
-            palette = HistogramColors.palette(this, 256)
-        }
+        pal.refresh(this)
 
         // Scroll every other frame so 120 Hz doesn't rush the history away.
         phase++
@@ -44,18 +39,10 @@ class WaterfallService : VisWallpaperService() {
         canvas.drawColor(Color.BLACK)
         dst.set(0, 0, canvas.width, canvas.height)
         canvas.drawBitmap(bmp, src, dst, paint)
-
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(200, 230, 230, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, canvas.width / 2f, canvas.height - 80f, tp)
-        }
     }
 
     private fun fillTopRow(env: PaintEnv) {
+        val palette = pal.colors
         val raw = env.audio.fftRaw
         if (raw.size < 8 || env.audio.audioIdle) {
             java.util.Arrays.fill(model, 0, cols, palette.firstOrNull()?.let { dim(it) } ?: Color.BLACK)

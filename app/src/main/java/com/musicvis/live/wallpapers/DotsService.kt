@@ -3,7 +3,7 @@ package com.musicvis.live.wallpapers
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import com.musicvis.live.HistogramColors
+import com.musicvis.live.PaletteCache
 import kotlin.math.sin
 
 /**
@@ -15,16 +15,12 @@ class DotsService : VisWallpaperService() {
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         strokeCap = Paint.Cap.ROUND
     }
-    private var palette = IntArray(0)
-    private var palKey: String? = null
+    private val pal = PaletteCache(128)
     private var phase = 0
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
-        val key = HistogramColors.textureKey(this)
-        if (key != palKey) {
-            palKey = key
-            palette = HistogramColors.palette(this, 128)
-        }
+        pal.refresh(this)
+        val palette = pal.colors
         phase++
         if (phase % 2 == 0) {
             val src = env.audio.waveform
@@ -57,15 +53,6 @@ class DotsService : VisWallpaperService() {
                 canvas.drawCircle(x, y, radius, dotPaint)
             }
             row++
-        }
-
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(200, 220, 225, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, w / 2f, h - 80f, tp)
         }
     }
 

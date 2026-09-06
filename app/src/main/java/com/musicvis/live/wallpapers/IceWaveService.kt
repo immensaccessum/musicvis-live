@@ -64,14 +64,6 @@ class IceWaveService : VisWallpaperService() {
             sparkPaint.color = Color.argb((env.touchBoost * 90).toInt(), 180, 220, 255)
             canvas.drawCircle(env.touchX * w, env.touchY * h, 40f + env.touchBoost * 120f, sparkPaint)
         }
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(200, 200, 230, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, w / 2f, h - 80f, tp)
-        }
     }
 
     private fun drawWave(

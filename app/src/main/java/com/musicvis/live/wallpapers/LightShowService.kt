@@ -5,7 +5,7 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
-import com.musicvis.live.HistogramColors
+import com.musicvis.live.PaletteCache
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
@@ -16,8 +16,7 @@ import kotlin.math.sin
  * Made to be seen across the room, not studied up close.
  */
 class LightShowService : VisWallpaperService() {
-    private var palette = IntArray(0)
-    private var palKey: String? = null
+    private val pal = PaletteCache(256)
     private val levels = FloatArray(3)
     private val bgPaint = Paint()
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -30,12 +29,8 @@ class LightShowService : VisWallpaperService() {
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
 
-        val key = HistogramColors.textureKey(this)
-        if (key != palKey) {
-            palKey = key
-            palette = HistogramColors.palette(this, 256)
-            shaderKey = 0
-        }
+        if (pal.refresh(this)) shaderKey = 0
+        val palette = pal.colors
         if (palette.isEmpty()) return
 
         // Band energies (spectrum is already volume-scaled and normalized).
@@ -79,15 +74,6 @@ class LightShowService : VisWallpaperService() {
         val rms = audio.rms.coerceIn(0f, 1f)
         corePaint.color = Color.argb((40 + rms * 150).toInt().coerceAtMost(255), 255, 255, 255)
         canvas.drawCircle(w / 2f, h / 2f, 40f + rms * w * 0.35f, corePaint)
-
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(220, 255, 255, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, w / 2f, h - 80f, tp)
-        }
     }
 
     private fun quant(v: Float) = (v.coerceIn(0f, 1f) * 24).toInt()

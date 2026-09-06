@@ -86,9 +86,5 @@ class VuMeterService : VisWallpaperService() {
 
         textPaint.textSize = 64f
         canvas.drawText("VU", cx, cy - r * 0.35f, textPaint)
-        env.trackLine?.let {
-            textPaint.textSize = 36f
-            canvas.drawText(it, w / 2f, h - 80f, textPaint)
-        }
     }
 }

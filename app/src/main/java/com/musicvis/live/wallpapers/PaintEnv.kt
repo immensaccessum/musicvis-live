@@ -19,6 +19,5 @@ data class PaintEnv(
     val touchX: Float,
     val touchY: Float,
     val touchBoost: Float,
-    val trackLine: String?,
     val zoomOut: Boolean
 )

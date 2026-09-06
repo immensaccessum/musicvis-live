@@ -4,7 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import com.musicvis.live.HistogramColors
+import com.musicvis.live.PaletteCache
 import kotlin.math.sin
 
 /**
@@ -27,15 +27,11 @@ class ScopeService : VisWallpaperService() {
         color = Color.argb(40, 120, 160, 200)
         strokeWidth = 2f
     }
-    private var palette = IntArray(0)
-    private var palKey: String? = null
+    private val pal = PaletteCache(8)
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
-        val key = HistogramColors.textureKey(this)
-        if (key != palKey) {
-            palKey = key
-            palette = HistogramColors.palette(this, 8)
-            val mid = palette[palette.size / 2]
+        if (pal.refresh(this)) {
+            val mid = pal.colors[pal.colors.size / 2]
             line.color = mid
             glow.color = Color.argb(60, Color.red(mid), Color.green(mid), Color.blue(mid))
         }
@@ -81,14 +77,5 @@ class ScopeService : VisWallpaperService() {
         }
         canvas.drawPath(path, glow)
         canvas.drawPath(path, line)
-
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(200, 200, 230, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, w / 2f, h - 80f, tp)
-        }
     }
 }

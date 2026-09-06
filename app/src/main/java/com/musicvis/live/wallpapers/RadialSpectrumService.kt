@@ -6,7 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import com.musicvis.live.FeaturePrefs
 import com.musicvis.live.R
-import com.musicvis.live.HistogramColors
+import com.musicvis.live.PaletteCache
 import com.musicvis.live.audio.AudioEngine
 import kotlin.math.abs
 import kotlin.math.cos
@@ -26,8 +26,7 @@ class RadialSpectrumService : VisWallpaperService() {
     }
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val smooth = FloatArray(BARS)
-    private var palette = IntArray(0)
-    private var palKey: String? = null
+    private val pal = PaletteCache(BARS)
     private var angle = 0f
     private var lastMs = 0L
     private var dispHz = 0f
@@ -40,11 +39,8 @@ class RadialSpectrumService : VisWallpaperService() {
     private val tunerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
-        val key = HistogramColors.textureKey(this)
-        if (key != palKey) {
-            palKey = key
-            palette = HistogramColors.palette(this, BARS)
-        }
+        pal.refresh(this)
+        val palette = pal.colors
 
         env.bg.draw(canvas, env.audio, Color.rgb(5, 7, 14))
         val w = canvas.width.toFloat()
@@ -97,15 +93,6 @@ class RadialSpectrumService : VisWallpaperService() {
         if (env.touchBoost > 0.05f) {
             corePaint.color = Color.argb((env.touchBoost * 80).toInt(), 200, 225, 255)
             canvas.drawCircle(env.touchX * w, env.touchY * h, 40f + env.touchBoost * 140f, corePaint)
-        }
-
-        env.trackLine?.let { title ->
-            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(200, 215, 225, 255)
-                textSize = 36f
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText(title, w / 2f, h - 80f, tp)
         }
     }
 

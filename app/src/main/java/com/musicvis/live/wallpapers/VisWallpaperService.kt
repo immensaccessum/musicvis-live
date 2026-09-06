@@ -53,6 +53,13 @@ abstract class VisWallpaperService : WallpaperService() {
         private val bgPainter = BackgroundPainter(this@VisWallpaperService)
         private val partyFx = PartyFx(this@VisWallpaperService)
         private val haptics = BeatHaptics(this@VisWallpaperService)
+        // One shared paint for the "now playing" line: allocating it per frame
+        // in every mode was both duplicated code and 120 allocations/second.
+        private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(200, 220, 228, 255)
+            textSize = 36f
+            textAlign = Paint.Align.CENTER
+        }
         private var lastWidget = 0L
         private var lastColorKey: String? = null
         private var frame = 0
@@ -224,7 +231,6 @@ abstract class VisWallpaperService : WallpaperService() {
                         canvas.save()
                         canvas.scale(1f + zoom * 0.12f, 1f + zoom * 0.12f, canvas.width / 2f, canvas.height / 2f)
                     }
-                    val track = if (FeaturePrefs.nowPlaying(this@VisWallpaperService)) NowPlaying.line else null
                     partyFx.tick(audio)
                     haptics.tick(audio, externalBeat = partyFx.beat)
                     paint(
@@ -245,10 +251,14 @@ abstract class VisWallpaperService : WallpaperService() {
                             touchX = touchX,
                             touchY = touchY,
                             touchBoost = touchBoost,
-                            trackLine = track,
                             zoomOut = FeaturePrefs.zoomOut(this@VisWallpaperService)
                         )
                     )
+                    if (FeaturePrefs.nowPlaying(this@VisWallpaperService)) {
+                        NowPlaying.line?.let { title ->
+                            canvas.drawText(title, canvas.width / 2f, canvas.height - 80f, trackPaint)
+                        }
+                    }
                     partyFx.draw(canvas)
                     if (FeaturePrefs.zoomOut(this@VisWallpaperService) && zoom != 0f && zoom != 1f) {
                         canvas.restore()
