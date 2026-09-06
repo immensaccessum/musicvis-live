@@ -121,13 +121,10 @@ class RhythmRunnerService : VisWallpaperService() {
         fun floorY(lvl: Int): Float = if (lvl == PIT) h * 2f else base - lvl * block
         fun groundY(x: Float): Float = floorY(levels[colOf(x)])
 
-        if (env.beat && !idle) {
+        if (env.beat && !idle && !phaseLocked) {
             val absCube = genCol - levels.size + colOf(w * 0.26f)
-            val err = ((absCube + phase) % TPB + TPB) % TPB
-            if (!phaseLocked || err != 0) {
-                phase = (TPB - ((absCube % TPB) + TPB) % TPB) % TPB
-                phaseLocked = true
-            }
+            phase = (TPB - ((absCube % TPB) + TPB) % TPB) % TPB
+            phaseLocked = true
         }
 
         drawStage(canvas, env, w, h, palette, rms, idle)
@@ -136,53 +133,61 @@ class RhythmRunnerService : VisWallpaperService() {
         val cube = block * 1.05f
         val groundNow = groundY(cubeX)
         if (cubeBottom == 0f) cubeBottom = groundNow
+        val here = colOf(cubeX)
+        fun safe(c: Int) = c in levels.indices && levels[c] != PIT && !spikeAt[c]
+        fun landingAfter(from: Int): Int {
+            var i = (from + 1).coerceAtMost(levels.size - 1)
+            while (i < levels.size - 1 && !safe(i)) i++
+            return i
+        }
+        fun launch(from: Int) {
+            val land = landingAfter(from)
+            val dist = (colX(land) - cubeX).coerceAtLeast(block * 0.85f)
+            jumpT = (dist / speed).coerceIn(0.28f, 1.3f)
+            val fromLvl = (from downTo 0).firstOrNull { levels[it] != PIT }?.let { levels[it] } ?: lastLevel
+            val landLvl = if (levels[land] == PIT) fromLvl else levels[land]
+            val climb = (landLvl - fromLvl).coerceAtLeast(0)
+            val span = (land - from).coerceAtLeast(1)
+            val jh = when {
+                from in padAt.indices && padAt[from] -> 5.8f * block
+                climb > 0 -> (climb + 2.2f) * block
+                else -> (2.8f + 0.2f * span) * block
+            }
+            airborne = true
+            rotating = true
+            grav = 8f * jh / (jumpT * jumpT)
+            vy = grav * jumpT / 2f
+        }
         if (!airborne) {
-            if (groundNow < cubeBottom - 2f || levels[colOf(cubeX)] == PIT) {
-                airborne = true
-                rotating = false
-                jumpT = period
-                grav = 8f * (3.2f * block) / (jumpT * jumpT)
-                vy = 0f
+            val nxt = (here + 1).coerceAtMost(levels.size - 1)
+            // Never walk onto a spike or step into a pit. Jump from the safe tile before.
+            val dangerAhead = nxt > here && (
+                levels[nxt] == PIT || spikeAt[nxt] ||
+                    (levels[nxt] != PIT && levels[nxt] != levels[here])
+                )
+            if (!safe(here) || padAt[here] || dangerAhead) {
+                launch(here)
             } else {
                 cubeBottom = groundNow
-                val here = colOf(cubeX)
-                val nxt = (here + 1).coerceAtMost(levels.size - 1)
-                val mustJump = nxt > here && (
-                    levels[nxt] == PIT || spikeAt[here] || padAt[here] ||
-                        (levels[nxt] != PIT && levels[nxt] != levels[here])
-                    )
-                if (mustJump) {
-                    var land = nxt
-                    while (land < levels.size &&
-                        (levels[land] == PIT || (land < nxt + 1 && spikeAt[here]))
-                    ) {
-                        if (levels[land] != PIT && land > here) break
-                        land++
-                    }
-                    if (land >= levels.size) land = levels.size - 1
-                    val dist = (colX(land) - cubeX).coerceAtLeast(block)
-                    jumpT = (dist / speed).coerceIn(0.28f, 1.25f)
-                    val climb = (levels.getOrElse(land) { lastLevel } - levels[here]).coerceAtLeast(0)
-                    val jh = when {
-                        padAt[here] -> 5.8f * block
-                        climb > 0 -> (climb + 2.0f) * block
-                        levels[nxt] == PIT -> (2.4f + 0.35f * (land - here)) * block
-                        else -> 2.2f * block
-                    }
-                    airborne = true
-                    rotating = true
-                    grav = 8f * jh / (jumpT * jumpT)
-                    vy = grav * jumpT / 2f
-                }
             }
         }
         if (airborne) {
             cubeBottom -= vy * dt
             vy -= grav * dt
             if (rotating) rot += 180f / jumpT * dt
+            val c = colOf(cubeX)
             val floor = groundY(cubeX)
-            if (vy < 0f && cubeBottom >= floor && levels[colOf(cubeX)] != PIT) {
+            // Refuse to land on a spike or in a pit — keep flying to the next safe tile.
+            if (vy < 0f && cubeBottom >= floor && safe(c)) {
                 cubeBottom = floor
+                vy = 0f
+                rot = 0f
+                airborne = false
+                rotating = false
+            } else if (vy < 0f && !safe(c) && cubeBottom > base + block * 2f) {
+                // Last-ditch: we dropped under the world. Snap to the next safe tile.
+                val land = landingAfter(c)
+                cubeBottom = floorY(if (levels[land] == PIT) lastLevel else levels[land])
                 vy = 0f
                 rot = 0f
                 airborne = false
