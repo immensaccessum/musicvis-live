@@ -87,7 +87,8 @@ class RhythmRunnerService : VisWallpaperService() {
         spd = if (spd == 0f) speedTarget else spd * 0.985f + speedTarget * 0.015f
         val speed = spd
         val block = w / 22f
-        while (terrain.size < 26) terrain.addLast(level())
+        // Buffer ~2.7 screens: spikes are planted on future columns too.
+        while (terrain.size < 60) terrain.addLast(level())
         scroll += speed * dt
         while (scroll >= block) {
             terrain.removeFirst()
@@ -104,8 +105,10 @@ class RhythmRunnerService : VisWallpaperService() {
         // ---- Far plane: the concert ----
         drawStage(canvas, env, w, h, palette, rms, idle)
 
-        // ---- Spikes: planted a whole number of beats away from the cube ----
-        val spikeW = block * 1.05f
+        // ---- Spikes: a whole number of beats away, snapped to the tile grid.
+        // Track and spikes scroll at the same speed, so a spike planted on a
+        // column stays on that column — the grid never drifts.
+        val spikeW = block
         val jumpT = 0.6f
         val cubeX = w * 0.28f
         if (env.beat) {
@@ -117,9 +120,27 @@ class RhythmRunnerService : VisWallpaperService() {
             if (!idle) {
                 val beatDist = (beatPeriod * speed).coerceAtLeast(1f)
                 val n = kotlin.math.ceil(((w + spikeW * 0.5f) - cubeX) / beatDist)
-                val sx = cubeX + n * beatDist
-                if (spikes.isEmpty() || sx - spikes.last() >= speed * jumpT * 1.35f) {
-                    spikes.addLast(sx)
+                val k = (((cubeX + n * beatDist) + scroll) / block).toInt()
+                // The spike needs a flat pocket: two level tiles on each side,
+                // so neither the spike nor the landing zone touches a step.
+                var col = -1
+                for (off in intArrayOf(0, 1, -1, 2, -2, 3)) {
+                    val c = k + off
+                    if (c in 2 until terrain.size - 2 &&
+                        terrain[c] == terrain[c - 2] && terrain[c] == terrain[c - 1] &&
+                        terrain[c] == terrain[c + 1] && terrain[c] == terrain[c + 2]
+                    ) {
+                        col = c
+                        break
+                    }
+                }
+                if (col > 0) {
+                    val sx = (col + 0.5f) * block - scroll
+                    if ((spikes.isEmpty() || sx - spikes.last() >= speed * jumpT * 1.35f) &&
+                        sx - cubeX > speed * jumpT
+                    ) {
+                        spikes.addLast(sx)
+                    }
                 }
             }
         }
@@ -224,14 +245,14 @@ class RhythmRunnerService : VisWallpaperService() {
         }
         canvas.drawPath(groundPath, groundLine)
 
-        // ---- Spikes: same fill and outline as the track ----
+        // ---- Spikes: exactly one tile, same fill and outline as the track ----
         spikePaint.color = dim(palette[56], 0.42f)
         for (s in spikes) {
             val sy = groundY(s)
             spikePath.reset()
-            spikePath.moveTo(s - spikeW * 0.55f, sy)
-            spikePath.lineTo(s, sy - spikeW * 1.35f)
-            spikePath.lineTo(s + spikeW * 0.55f, sy)
+            spikePath.moveTo(s - block / 2f, sy)
+            spikePath.lineTo(s, sy - block)
+            spikePath.lineTo(s + block / 2f, sy)
             spikePath.close()
             canvas.drawPath(spikePath, spikePaint)
             canvas.drawPath(spikePath, groundLine)
