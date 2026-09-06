@@ -6,16 +6,13 @@ import android.graphics.Paint
 import android.graphics.Path
 import com.musicvis.live.PaletteCache
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
  * Geometry-Dash style auto-runner, cheated onto the beat.
  *
- * Speed is locked so exactly [TPB] tiles pass per beat. Solid floor exists
- * only on beat columns (and short run-up tiles); everything between is
- * carved out. The cube can only land on a beat — takeoff and landing are
- * the metronome. Jump duration is the gap width / speed, so it equals
- * one or two beats by construction.
+ * Speed is locked so exactly [TPB] tiles pass per beat. Silence is a flat
+ * road. Music raises terraces with the bass and carves a gap only on a
+ * real beat; jump duration is the gap width / speed (one or two beats).
  */
 class RhythmRunnerService : VisWallpaperService() {
     private val pal = PaletteCache(64)
@@ -45,7 +42,6 @@ class RhythmRunnerService : VisWallpaperService() {
     private var scroll = 0f
     private var genCol = 0
     private var lastLevel = 1
-    private val rnd = Random(System.nanoTime())
 
     private var smoothBass = 0f
     private var spd = 0f
@@ -70,6 +66,11 @@ class RhythmRunnerService : VisWallpaperService() {
     private var phase = 0
     private var phaseLocked = false
     private var pendingJumps = 0
+    /** Last non-idle audio snapshot the planner is allowed to see. */
+    private var musicOn = false
+    private var musicBass = 0f
+    private var musicRms = 0f
+    private var musicKick = 0f
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         pal.refresh(this)
@@ -86,8 +87,16 @@ class RhythmRunnerService : VisWallpaperService() {
         val idle = audio.audioIdle
         val rms = audio.rms.coerceIn(0f, 1f)
 
-        val bassTarget = if (idle) 0.35f + 0.25f * sin(env.timeMs * 0.0014f) else audio.bass
-        smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.94f
+        musicOn = !idle
+        if (!idle) {
+            musicBass = audio.bass
+            musicRms = rms
+            musicKick = audio.kick
+        }
+        val bassTarget = if (idle) 0f else audio.bass
+        smoothBass = if (idle) 0f else {
+            if (bassTarget > smoothBass) bassTarget else smoothBass * 0.94f
+        }
 
         if (env.beat && !idle) {
             if (lastBeatMs != 0L) {
@@ -320,51 +329,42 @@ class RhythmRunnerService : VisWallpaperService() {
     }
 
     /**
-     * Floor only on beat columns. Between beats the tiles are deleted so
-     * the cube has nowhere to stand except on the metronome.
+     * Silence = a flat road, no pits. Music = height from bass, a jump only
+     * when a real beat is queued. Gaps are carved solely for those jumps.
      */
     private fun planSetPiece() {
         alignToBeat()
-        val energy = smoothBass.coerceIn(0f, 1f)
+        if (!musicOn && pendingJumps == 0) {
+            lastLevel = 1
+            planned.addLast(Cell(1, spike = false, pad = false))
+            while (!onBeat(absPlanned())) {
+                planned.addLast(Cell(1, spike = false, pad = false))
+            }
+            return
+        }
+        // Terrace height follows the bass: quiet verse = low, drop = high.
+        val want = (smoothBass * 4.2f).toInt().coerceIn(0, 4)
         if (pendingJumps > 0) {
             pendingJumps--
-            val longJump = pendingJumps > 0 && energy > 0.5f && rnd.nextFloat() < 0.35f
+            val longJump = pendingJumps > 0 && musicRms > 0.55f
             if (longJump) pendingJumps--
-            val pad = energy > 0.45f && rnd.nextFloat() < 0.25f
+            val pad = musicKick > 0.45f && musicRms > 0.4f
+            lastLevel = want
             planned.addLast(Cell(lastLevel, spike = !pad, pad = pad))
             if (longJump) {
                 carveToNextBeat()
                 planned.addLast(Cell(PIT, spike = false, pad = false))
             }
             carveToNextBeat()
-            shapeLanding(energy)
+            lastLevel = (smoothBass * 4.2f).toInt().coerceIn(0, 4)
             planned.addLast(Cell(lastLevel, spike = false, pad = false))
             return
         }
-        // No beat waiting: one solid beat, then carve — a rest step, wall or cliff.
-        val roll = rnd.nextFloat()
-        when {
-            energy > 0.4f && roll < 0.35f -> {
-                lastLevel = (lastLevel + if (energy > 0.6f) 2 else 1).coerceAtMost(4)
-                planned.addLast(Cell(lastLevel, spike = false, pad = false))
-            }
-            lastLevel > 0 && roll < 0.6f -> {
-                planned.addLast(Cell(lastLevel, spike = false, pad = false))
-                lastLevel = (lastLevel - if (energy > 0.5f) 2 else 1).coerceAtLeast(0)
-            }
-            else -> planned.addLast(Cell(lastLevel, spike = false, pad = false))
-        }
-        carveToNextBeat()
+        // Between beats: keep running on a solid terrace. No fake gaps.
+        lastLevel = want
         planned.addLast(Cell(lastLevel, spike = false, pad = false))
-    }
-
-    private fun shapeLanding(energy: Float) {
-        val roll = rnd.nextFloat()
-        when {
-            energy > 0.55f && roll < 0.35f ->
-                lastLevel = (lastLevel + 1).coerceAtMost(4)
-            lastLevel > 0 && roll < 0.6f ->
-                lastLevel = (lastLevel - 1).coerceAtLeast(0)
+        while (!onBeat(absPlanned())) {
+            planned.addLast(Cell(lastLevel, spike = false, pad = false))
         }
     }
 
