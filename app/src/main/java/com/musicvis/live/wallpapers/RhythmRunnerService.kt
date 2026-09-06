@@ -5,18 +5,17 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import com.musicvis.live.PaletteCache
-import kotlin.math.ceil
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Geometry-Dash style auto-runner. The level is a tape of tiles; spikes and
- * pads are flags on a column so they can never drift off the grid.
+ * Geometry-Dash style auto-runner, cheated onto the beat.
  *
- * The generator never emits a staircase. It queues discrete set-pieces
- * driven by the music: spike groups, 1–2 block walls, pits, cliffs, bounce
- * pads. Each piece gets its own jump arc — a hop, a long leap, a high vault.
- * The cube never walks down a step: a drop is always a jump or a fall.
+ * Speed is locked so exactly [TPB] tiles pass per beat. Solid floor exists
+ * only on beat columns (and short run-up tiles); everything between is
+ * carved out. The cube can only land on a beat — takeoff and landing are
+ * the metronome. Jump duration is the gap width / speed, so it equals
+ * one or two beats by construction.
  */
 class RhythmRunnerService : VisWallpaperService() {
     private val pal = PaletteCache(64)
@@ -44,6 +43,7 @@ class RhythmRunnerService : VisWallpaperService() {
     private val padAt = ArrayDeque<Boolean>()
     private val planned = ArrayDeque<Cell>()
     private var scroll = 0f
+    private var genCol = 0
     private var lastLevel = 1
     private val rnd = Random(System.nanoTime())
 
@@ -55,7 +55,7 @@ class RhythmRunnerService : VisWallpaperService() {
     private var airborne = false
     private var rotating = false
     private var rot = 0f
-    private var jumpT = 0.55f
+    private var jumpT = 0.5f
     private var grav = 0f
     private var lastMs = 0L
     private var strobe = 0f
@@ -67,6 +67,9 @@ class RhythmRunnerService : VisWallpaperService() {
 
     private var lastBeatMs = 0L
     private var beatPeriod = 0.5f
+    private var phase = 0
+    private var phaseLocked = false
+    private var pendingJumps = 0
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         pal.refresh(this)
@@ -86,10 +89,21 @@ class RhythmRunnerService : VisWallpaperService() {
         val bassTarget = if (idle) 0.35f + 0.25f * sin(env.timeMs * 0.0014f) else audio.bass
         smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.94f
 
-        val speedTarget = w * (if (idle) 0.38f else 0.40f + 0.28f * rms)
-        spd = if (spd == 0f) speedTarget else spd * 0.98f + speedTarget * 0.02f
-        val speed = spd
+        if (env.beat && !idle) {
+            if (lastBeatMs != 0L) {
+                val iv = (env.timeMs - lastBeatMs) / 1000f
+                if (iv in 0.25f..1.4f) beatPeriod = beatPeriod * 0.65f + iv * 0.35f
+            }
+            lastBeatMs = env.timeMs
+            strobe = 1f
+            pendingJumps = (pendingJumps + 1).coerceAtMost(5)
+        }
+
         val block = w / 18f
+        val period = (if (idle) 0.5f else beatPeriod).coerceIn(0.28f, 1.1f)
+        val speedTarget = TPB * block / period
+        spd = if (spd == 0f) speedTarget else spd * 0.9f + speedTarget * 0.1f
+        val speed = spd
 
         while (levels.size < TAPE) appendColumn()
         scroll += speed * dt
@@ -107,112 +121,58 @@ class RhythmRunnerService : VisWallpaperService() {
         fun floorY(lvl: Int): Float = if (lvl == PIT) h * 2f else base - lvl * block
         fun groundY(x: Float): Float = floorY(levels[colOf(x)])
 
-        if (env.beat) strobe = 1f
-        drawStage(canvas, env, w, h, palette, rms, idle)
-
-        val cubeX = w * 0.26f
         if (env.beat && !idle) {
-            if (lastBeatMs != 0L) {
-                val iv = (env.timeMs - lastBeatMs) / 1000f
-                if (iv in 0.25f..1.5f) beatPeriod = beatPeriod * 0.7f + iv * 0.3f
-            }
-            lastBeatMs = env.timeMs
-            val group = 1 + (rms * 2.6f).toInt().coerceAtMost(2)
-            val beatDist = (beatPeriod * speed).coerceAtLeast(1f)
-            val n = ceil(((w + block) - cubeX) / beatDist)
-            val k = colOf(cubeX + n * beatDist)
-            for (off in intArrayOf(0, 1, -1, 2, -2)) {
-                val c = k + off
-                if (c >= 0 && c + group <= levels.size &&
-                    canPlaceSpikes(c, group) && colX(c) > cubeX + speed * 0.45f
-                ) {
-                    for (j in 0 until group) spikeAt[c + j] = true
-                    break
-                }
+            val absCube = genCol - levels.size + colOf(w * 0.26f)
+            val err = ((absCube + phase) % TPB + TPB) % TPB
+            if (!phaseLocked || err != 0) {
+                phase = (TPB - ((absCube % TPB) + TPB) % TPB) % TPB
+                phaseLocked = true
             }
         }
 
+        drawStage(canvas, env, w, h, palette, rms, idle)
+
+        val cubeX = w * 0.26f
         val cube = block * 1.05f
         val groundNow = groundY(cubeX)
         if (cubeBottom == 0f) cubeBottom = groundNow
         if (!airborne) {
-            when {
-                groundNow < cubeBottom - 2f -> {
-                    // Floor vanished (pit/cliff). Fall — never walk down.
+            if (groundNow < cubeBottom - 2f || levels[colOf(cubeX)] == PIT) {
+                airborne = true
+                rotating = false
+                jumpT = period
+                grav = 8f * (3.2f * block) / (jumpT * jumpT)
+                vy = 0f
+            } else {
+                cubeBottom = groundNow
+                val here = colOf(cubeX)
+                val nxt = (here + 1).coerceAtMost(levels.size - 1)
+                val mustJump = nxt > here && (
+                    levels[nxt] == PIT || spikeAt[here] || padAt[here] ||
+                        (levels[nxt] != PIT && levels[nxt] != levels[here])
+                    )
+                if (mustJump) {
+                    var land = nxt
+                    while (land < levels.size &&
+                        (levels[land] == PIT || (land < nxt + 1 && spikeAt[here]))
+                    ) {
+                        if (levels[land] != PIT && land > here) break
+                        land++
+                    }
+                    if (land >= levels.size) land = levels.size - 1
+                    val dist = (colX(land) - cubeX).coerceAtLeast(block)
+                    jumpT = (dist / speed).coerceIn(0.28f, 1.25f)
+                    val climb = (levels.getOrElse(land) { lastLevel } - levels[here]).coerceAtLeast(0)
+                    val jh = when {
+                        padAt[here] -> 5.8f * block
+                        climb > 0 -> (climb + 2.0f) * block
+                        levels[nxt] == PIT -> (2.4f + 0.35f * (land - here)) * block
+                        else -> 2.2f * block
+                    }
                     airborne = true
-                    rotating = false
-                    jumpT = 0.5f
-                    grav = 8f * (5f * block) / (jumpT * jumpT)
-                    vy = 0f
-                }
-                else -> {
-                    cubeBottom = groundNow
-                    var jump = false
-                    var jt = 0.48f
-                    var jh = 2.2f * block
-                    val look = speed * 0.85f
-                    val cur = levels[colOf(cubeX)]
-                    if (padAt[colOf(cubeX)] && cur != PIT) {
-                        jump = true
-                        jt = 0.72f
-                        jh = 6.2f * block
-                    } else {
-                        var c = colOf(cubeX) + 1
-                        while (c < levels.size) {
-                            val edge = c * block - scroll - cubeX
-                            if (edge > look) break
-                            val lvl = levels[c]
-                            when {
-                                padAt[c] -> {
-                                    jt = 0.7f
-                                    jh = 6f * block
-                                    if (edge <= speed * jt / 2f) jump = true
-                                    break
-                                }
-                                spikeAt[c] -> {
-                                    var g = 1
-                                    while (c + g < levels.size && spikeAt[c + g]) g++
-                                    jt = 0.42f + 0.14f * g
-                                    jh = (1.8f + 0.9f * g) * block
-                                    val trig = (speed * jt / 2f - g * block / 2f).coerceAtLeast(block * 0.25f)
-                                    if (edge <= trig) jump = true
-                                    break
-                                }
-                                lvl == PIT -> {
-                                    var p = 1
-                                    while (c + p < levels.size && levels[c + p] == PIT) p++
-                                    jt = (2.2f * p * block / speed).coerceIn(0.48f, 0.85f)
-                                    jh = (2.6f + 0.4f * p) * block
-                                    val trig = (speed * jt / 2f - p * block / 2f).coerceAtLeast(block * 0.25f)
-                                    if (edge <= trig) jump = true
-                                    break
-                                }
-                                lvl > cur -> {
-                                    val dl = lvl - cur
-                                    jt = 0.50f + 0.12f * dl
-                                    jh = (dl + 2.2f) * block
-                                    if (edge <= speed * jt / 2f) jump = true
-                                    break
-                                }
-                                lvl < cur && lvl != PIT -> {
-                                    // Leap off the cliff instead of walking down the step.
-                                    val drop = cur - lvl
-                                    jt = 0.40f + 0.08f * drop
-                                    jh = (1.4f + 0.4f * drop) * block
-                                    if (edge <= speed * jt / 2f) jump = true
-                                    break
-                                }
-                            }
-                            c++
-                        }
-                    }
-                    if (jump) {
-                        airborne = true
-                        rotating = true
-                        jumpT = jt
-                        grav = 8f * jh / (jt * jt)
-                        vy = grav * jt / 2f
-                    }
+                    rotating = true
+                    grav = 8f * jh / (jumpT * jumpT)
+                    vy = grav * jumpT / 2f
                 }
             }
         }
@@ -335,64 +295,72 @@ class RhythmRunnerService : VisWallpaperService() {
         levels.addLast(cell.level)
         spikeAt.addLast(cell.spike)
         padAt.addLast(cell.pad)
+        genCol++
+    }
+
+    private fun absPlanned(): Int = genCol + planned.size
+
+    private fun onBeat(abs: Int): Boolean = ((abs + phase) % TPB + TPB) % TPB == 0
+
+    private fun alignToBeat() {
+        while (!onBeat(absPlanned())) {
+            planned.addLast(Cell(lastLevel, spike = false, pad = false))
+        }
+    }
+
+    private fun carveToNextBeat() {
+        do {
+            planned.addLast(Cell(PIT, spike = false, pad = false))
+        } while (!onBeat(absPlanned()))
     }
 
     /**
-     * Rest of [rest] flat columns, then one set-piece. Never a 1-block
-     * staircase: height changes are walls, cliffs or pits.
+     * Floor only on beat columns. Between beats the tiles are deleted so
+     * the cube has nowhere to stand except on the metronome.
      */
     private fun planSetPiece() {
+        alignToBeat()
         val energy = smoothBass.coerceIn(0f, 1f)
-        val rest = when {
-            energy > 0.65f -> 4
-            energy > 0.4f -> 5
-            else -> 7
+        if (pendingJumps > 0) {
+            pendingJumps--
+            val longJump = pendingJumps > 0 && energy > 0.5f && rnd.nextFloat() < 0.35f
+            if (longJump) pendingJumps--
+            val pad = energy > 0.45f && rnd.nextFloat() < 0.25f
+            planned.addLast(Cell(lastLevel, spike = !pad, pad = pad))
+            if (longJump) {
+                carveToNextBeat()
+                planned.addLast(Cell(PIT, spike = false, pad = false))
+            }
+            carveToNextBeat()
+            shapeLanding(energy)
+            planned.addLast(Cell(lastLevel, spike = false, pad = false))
+            return
         }
-        repeat(rest) { planned.addLast(Cell(lastLevel, spike = false, pad = false)) }
-
+        // No beat waiting: one solid beat, then carve — a rest step, wall or cliff.
         val roll = rnd.nextFloat()
         when {
-            energy < 0.18f -> {
-                if (lastLevel > 1 && roll < 0.45f) {
-                    lastLevel = (lastLevel - 2).coerceAtLeast(0)
-                    planned.addLast(Cell(lastLevel, spike = false, pad = false))
-                }
-            }
-            roll < 0.22f -> {
-                val up = if (energy > 0.55f && lastLevel <= 2) 2 else 1
-                lastLevel = (lastLevel + up).coerceAtMost(4)
+            energy > 0.4f && roll < 0.35f -> {
+                lastLevel = (lastLevel + if (energy > 0.6f) 2 else 1).coerceAtMost(4)
                 planned.addLast(Cell(lastLevel, spike = false, pad = false))
             }
-            roll < 0.44f && lastLevel > 0 -> {
-                lastLevel = (lastLevel - (if (energy > 0.5f) 2 else 1)).coerceAtLeast(0)
+            lastLevel > 0 && roll < 0.6f -> {
                 planned.addLast(Cell(lastLevel, spike = false, pad = false))
+                lastLevel = (lastLevel - if (energy > 0.5f) 2 else 1).coerceAtLeast(0)
             }
-            roll < 0.66f -> {
-                val wide = 2 + if (energy > 0.5f) rnd.nextInt(2) else 0
-                repeat(wide) { planned.addLast(Cell(PIT, spike = false, pad = false)) }
-                if (energy > 0.45f && rnd.nextBoolean()) {
-                    lastLevel = (lastLevel + (if (rnd.nextBoolean()) 1 else -1)).coerceIn(0, 4)
-                }
-            }
-            roll < 0.82f -> {
-                planned.addLast(Cell(lastLevel, spike = false, pad = true))
-            }
-            else -> {
-                val n = 1 + (energy * 2.2f).toInt().coerceAtMost(2)
-                repeat(n) { planned.addLast(Cell(lastLevel, spike = true, pad = false)) }
-            }
+            else -> planned.addLast(Cell(lastLevel, spike = false, pad = false))
         }
+        carveToNextBeat()
+        planned.addLast(Cell(lastLevel, spike = false, pad = false))
     }
 
-    private fun canPlaceSpikes(c: Int, g: Int): Boolean {
-        val from = (c - 3).coerceAtLeast(1)
-        val to = (c + g - 1 + 3).coerceAtMost(levels.size - 1)
-        if (c + g >= levels.size) return false
-        for (j in from..to) {
-            if (spikeAt[j] || padAt[j]) return false
-            if (levels[j] == PIT || levels[j] != levels[j - 1]) return false
+    private fun shapeLanding(energy: Float) {
+        val roll = rnd.nextFloat()
+        when {
+            energy > 0.55f && roll < 0.35f ->
+                lastLevel = (lastLevel + 1).coerceAtMost(4)
+            lastLevel > 0 && roll < 0.6f ->
+                lastLevel = (lastLevel - 1).coerceAtLeast(0)
         }
-        return true
     }
 
     private fun drawStage(
@@ -459,5 +427,7 @@ class RhythmRunnerService : VisWallpaperService() {
         private const val TRAIL = 26
         private const val PIT = -100
         private const val TAPE = 60
+        /** Tiles that scroll past per beat. Speed = TPB * block / period. */
+        private const val TPB = 3
     }
 }
