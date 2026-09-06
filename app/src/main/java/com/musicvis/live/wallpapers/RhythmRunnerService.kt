@@ -5,12 +5,19 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import com.musicvis.live.PaletteCache
+import kotlin.math.ceil
 import kotlin.math.sin
 
 /**
  * Geometry-Dash style auto-runner built from the music itself.
- * Foreground: a blocky tiled track (bass = height in whole blocks), spikes
- * planted on beats, a cube that jumps them right on the rhythm.
+ *
+ * The whole level is one "tape" of tile columns: the terrain level and the
+ * spike flag live on the column, so spikes are always exactly one tile and
+ * always on the grid — the tape scrolls as a whole and nothing can drift.
+ * A hard invariant makes clipping impossible by construction: any two
+ * obstacles (spike or terrain step) are at least [GAP] columns apart, which
+ * is longer than a full jump.
+ *
  * Background: a distant "concert" — an equalizer skyline, swaying spotlight
  * beams and a strobe that flares on every beat.
  */
@@ -33,16 +40,18 @@ class RhythmRunnerService : VisWallpaperService() {
     private val spikePath = Path()
     private val beamPath = Path()
 
-    // Terrain: block levels (whole blocks, 0..3), one column = one block.
-    private val terrain = ArrayDeque<Int>()
+    // ---- Level tape ----
+    private val levels = ArrayDeque<Int>()
+    private val spikeAt = ArrayDeque<Boolean>()
     private var scroll = 0f
+    private var genCol = 0          // absolute index of the next column to generate
+    private var lastObstacle = -GAP // absolute column of the latest obstacle
+    private var lastLevel = 0
+
     private var smoothBass = 0f
     private var spd = 0f
 
-    // Spikes: screen x positions moving left.
-    private val spikes = ArrayDeque<Float>()
-
-    // Cube physics: absolute bottom Y, vy is up-positive.
+    // ---- Cube physics: absolute bottom Y, vy is up-positive ----
     private var cubeBottom = 0f
     private var vy = 0f
     private var airborne = false
@@ -53,14 +62,10 @@ class RhythmRunnerService : VisWallpaperService() {
     private var strobe = 0f
     private val skyline = FloatArray(SKY_BARS)
 
-    // Beat tempo estimate: spikes are planted a whole number of beats away
-    // from the cube, so the jump apex lands right on a beat.
+    // Beat tempo estimate: spikes go to the column a whole number of beats
+    // away from the cube, so the jump apex lands right on a beat.
     private var lastBeatMs = 0L
     private var beatPeriod = 0.5f
-
-    // Terrain generator state: ±1 block steps with a minimum plateau length.
-    private var lastLevel = 0
-    private var run = 0
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         pal.refresh(this)
@@ -82,33 +87,32 @@ class RhythmRunnerService : VisWallpaperService() {
         smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.96f
 
         // Heavily smoothed speed: the jump arc is precomputed, so the track
-        // must not change pace mid-flight or the cube lands on a spike.
+        // must not change pace mid-flight.
         val speedTarget = w * (if (idle) 0.30f else 0.32f + 0.22f * rms)
         spd = if (spd == 0f) speedTarget else spd * 0.985f + speedTarget * 0.015f
         val speed = spd
         val block = w / 22f
-        // Buffer ~2.7 screens: spikes are planted on future columns too.
-        while (terrain.size < 60) terrain.addLast(level())
+
+        while (levels.size < TAPE) appendColumn()
         scroll += speed * dt
         while (scroll >= block) {
-            terrain.removeFirst()
-            terrain.addLast(level())
+            levels.removeFirst()
+            spikeAt.removeFirst()
+            appendColumn()
             scroll -= block
         }
 
         val base = h * 0.74f
-        fun colOf(x: Float): Int = ((x + scroll) / block).toInt().coerceIn(0, terrain.size - 1)
-        fun groundY(x: Float): Float = base - terrain[colOf(x)] * block
+        fun colOf(x: Float): Int = ((x + scroll) / block).toInt().coerceIn(0, levels.size - 1)
+        fun colX(c: Int): Float = (c + 0.5f) * block - scroll
+        fun groundY(x: Float): Float = base - levels[colOf(x)] * block
 
         if (env.beat) strobe = 1f
 
         // ---- Far plane: the concert ----
         drawStage(canvas, env, w, h, palette, rms, idle)
 
-        // ---- Spikes: a whole number of beats away, snapped to the tile grid.
-        // Track and spikes scroll at the same speed, so a spike planted on a
-        // column stays on that column — the grid never drifts.
-        val spikeW = block
+        // ---- Beat -> spike on the tape ----
         val jumpT = 0.6f
         val cubeX = w * 0.28f
         if (env.beat) {
@@ -119,35 +123,20 @@ class RhythmRunnerService : VisWallpaperService() {
             lastBeatMs = env.timeMs
             if (!idle) {
                 val beatDist = (beatPeriod * speed).coerceAtLeast(1f)
-                val n = kotlin.math.ceil(((w + spikeW * 0.5f) - cubeX) / beatDist)
-                val k = (((cubeX + n * beatDist) + scroll) / block).toInt()
-                // The spike needs a flat pocket: two level tiles on each side,
-                // so neither the spike nor the landing zone touches a step.
-                var col = -1
-                for (off in intArrayOf(0, 1, -1, 2, -2, 3)) {
+                val n = ceil(((w + block) - cubeX) / beatDist)
+                val k = colOf(cubeX + n * beatDist)
+                for (off in intArrayOf(0, 1, -1, 2, -2, 3, -3)) {
                     val c = k + off
-                    if (c in 2 until terrain.size - 2 &&
-                        terrain[c] == terrain[c - 2] && terrain[c] == terrain[c - 1] &&
-                        terrain[c] == terrain[c + 1] && terrain[c] == terrain[c + 2]
-                    ) {
-                        col = c
+                    if (c in 0 until levels.size && canPlaceSpike(c) && colX(c) > cubeX + speed * jumpT) {
+                        spikeAt[c] = true
+                        lastObstacle = maxOf(lastObstacle, genCol - levels.size + c)
                         break
-                    }
-                }
-                if (col > 0) {
-                    val sx = (col + 0.5f) * block - scroll
-                    if ((spikes.isEmpty() || sx - spikes.last() >= speed * jumpT * 1.35f) &&
-                        sx - cubeX > speed * jumpT
-                    ) {
-                        spikes.addLast(sx)
                     }
                 }
             }
         }
-        for (i in spikes.indices) spikes[i] -= speed * dt
-        while (spikes.isNotEmpty() && spikes.first() < -spikeW * 2) spikes.removeFirst()
 
-        // ---- Cube: real physics — jumps walls, falls off ledges ----
+        // ---- Cube: jumps spikes and walls, falls off ledges ----
         val cube = block * 1.15f
         val jumpH = h * 0.16f
         val grav = 8f * jumpH / (jumpT * jumpT)
@@ -163,26 +152,21 @@ class RhythmRunnerService : VisWallpaperService() {
                 cubeBottom = groundNow
                 val trigger = speed * jumpT / 2f
                 var jump = false
-                for (s in spikes) {
-                    val d = s - cubeX
-                    if (d > 0f && d <= trigger) {
+                val curLevel = levels[colOf(cubeX)]
+                var c = colOf(cubeX) + 1
+                while (c < levels.size) {
+                    val edge = c * block - scroll - cubeX      // distance to column edge
+                    if (edge > trigger + block) break
+                    val center = colX(c) - cubeX               // distance to column center
+                    if (spikeAt[c] && center > 0f && center <= trigger) {
                         jump = true
                         break
                     }
-                }
-                if (!jump) {
-                    // A wall ahead must be jumped, not ridden.
-                    val cur = terrain[colOf(cubeX)]
-                    var c = colOf(cubeX) + 1
-                    while (c < terrain.size) {
-                        val dx = c * block - scroll - cubeX
-                        if (dx > trigger) break
-                        if (terrain[c] > cur) {
-                            if (dx > 0f) jump = true
-                            break
-                        }
-                        c++
+                    if (levels[c] > curLevel && edge > 0f && edge <= trigger) {
+                        jump = true
+                        break
                     }
+                    c++
                 }
                 if (idle && !jump) {
                     idleTimer += dt
@@ -217,22 +201,20 @@ class RhythmRunnerService : VisWallpaperService() {
         groundLine.color = palette[44]
         gridPaint.color = Color.argb(34, 255, 255, 255)
         groundPath.reset()
-        var col = 0
         var x = -scroll
-        groundPath.moveTo(x, base - terrain[0] * block)
-        while (col < terrain.size) {
-            val y = base - terrain[col] * block
+        groundPath.moveTo(x, base - levels[0] * block)
+        for (c in levels.indices) {
+            val y = base - levels[c] * block
             groundPath.lineTo(x, y)
             groundPath.lineTo(x + block, y)
             x += block
-            col++
+            if (x > w + block) break
         }
         fillPath.set(groundPath)
         fillPath.lineTo(x, h)
         fillPath.lineTo(-scroll, h)
         fillPath.close()
         canvas.drawPath(fillPath, groundFill)
-        // Tile grid inside the fill.
         var gx = -scroll
         while (gx < w + block) {
             canvas.drawLine(gx, groundY(gx + 1f), gx, h, gridPaint)
@@ -245,14 +227,17 @@ class RhythmRunnerService : VisWallpaperService() {
         }
         canvas.drawPath(groundPath, groundLine)
 
-        // ---- Spikes: exactly one tile, same fill and outline as the track ----
+        // ---- Spikes: column flags, exactly one tile, same style as track ----
         spikePaint.color = dim(palette[56], 0.42f)
-        for (s in spikes) {
-            val sy = groundY(s)
+        for (c in levels.indices) {
+            if (!spikeAt[c]) continue
+            val sx = colX(c)
+            if (sx < -block || sx > w + block) continue
+            val sy = base - levels[c] * block
             spikePath.reset()
-            spikePath.moveTo(s - block / 2f, sy)
-            spikePath.lineTo(s, sy - block)
-            spikePath.lineTo(s + block / 2f, sy)
+            spikePath.moveTo(sx - block / 2f, sy)
+            spikePath.lineTo(sx, sy - block)
+            spikePath.lineTo(sx + block / 2f, sy)
             spikePath.close()
             canvas.drawPath(spikePath, spikePaint)
             canvas.drawPath(spikePath, groundLine)
@@ -277,6 +262,34 @@ class RhythmRunnerService : VisWallpaperService() {
         if (strobe < 0.02f) strobe = 0f
     }
 
+    /** New tape column. A terrain step is an obstacle and respects [GAP]. */
+    private fun appendColumn() {
+        var lvl = lastLevel
+        if (genCol - lastObstacle >= GAP) {
+            val want = (smoothBass * 3.4f).toInt().coerceIn(0, 3)
+            val step = (want - lastLevel).coerceIn(-1, 1)
+            if (step != 0) {
+                lvl += step
+                lastObstacle = genCol
+            }
+        }
+        lastLevel = lvl
+        levels.addLast(lvl)
+        spikeAt.addLast(false)
+        genCol++
+    }
+
+    /** A spike needs GAP clear columns around it: no steps, no other spikes. */
+    private fun canPlaceSpike(c: Int): Boolean {
+        val from = (c - GAP).coerceAtLeast(1)
+        val to = (c + GAP).coerceAtMost(levels.size - 1)
+        for (j in from..to) {
+            if (spikeAt[j]) return false
+            if (levels[j] != levels[j - 1]) return false
+        }
+        return true
+    }
+
     /** Distant stage: equalizer skyline, spotlight beams, beat strobe. */
     private fun drawStage(
         canvas: Canvas, env: PaintEnv, w: Float, h: Float,
@@ -284,14 +297,12 @@ class RhythmRunnerService : VisWallpaperService() {
     ) {
         val horizon = h * 0.56f
 
-        // Beat strobe behind everything: a soft flare over the stage.
         if (strobe > 0f) {
             stagePaint.color = palette[20]
             stagePaint.alpha = (strobe * 70f).toInt()
             canvas.drawCircle(w * 0.62f, horizon - h * 0.10f, h * 0.16f + strobe * h * 0.06f, stagePaint)
         }
 
-        // Spotlight beams swaying from above the stage.
         val t = env.timeMs * 0.001f
         beamPaint.color = palette[16]
         for (k in 0 until 3) {
@@ -306,7 +317,6 @@ class RhythmRunnerService : VisWallpaperService() {
             canvas.drawPath(beamPath, beamPaint)
         }
 
-        // Equalizer skyline: the "crowd/stage" dancing at the horizon.
         val s = env.audio.spectrum
         val bw = w / SKY_BARS
         stagePaint.color = dim(palette[38], 0.55f)
@@ -322,24 +332,8 @@ class RhythmRunnerService : VisWallpaperService() {
             val bh = skyline[i] * h * 0.10f
             canvas.drawRect(i * bw + 1f, horizon - bh, (i + 1) * bw - 1f, horizon, stagePaint)
         }
-        // Thin stage edge.
         stagePaint.alpha = 70
         canvas.drawRect(0f, horizon, w, horizon + 3f, stagePaint)
-    }
-
-    /** Next terrain column: ±1 block steps only, plateaus of 4+ columns. */
-    private fun level(): Int {
-        val want = (smoothBass * 3.4f).toInt().coerceIn(0, 3)
-        if (run < 4) {
-            run++
-            return lastLevel
-        }
-        val step = (want - lastLevel).coerceIn(-1, 1)
-        if (step != 0) {
-            lastLevel += step
-            run = 1
-        }
-        return lastLevel
     }
 
     private fun dim(c: Int, k: Float): Int = Color.rgb(
@@ -350,5 +344,15 @@ class RhythmRunnerService : VisWallpaperService() {
 
     companion object {
         private const val SKY_BARS = 28
+
+        /** Tape length in columns (~2.7 screens at 22 columns per screen). */
+        private const val TAPE = 60
+
+        /**
+         * Minimum distance between any two obstacles, in columns. A full jump
+         * covers ~4.2 columns, so 8 guarantees the cube always lands on flat
+         * ground with room to spare before the next obstacle.
+         */
+        private const val GAP = 8
     }
 }
