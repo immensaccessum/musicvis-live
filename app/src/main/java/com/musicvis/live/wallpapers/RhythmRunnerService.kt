@@ -8,26 +8,33 @@ import com.musicvis.live.PaletteCache
 import kotlin.math.sin
 
 /**
- * Geometry-Dash style auto-runner built from the music itself:
- * hills come from the bass, a spike grows on every beat, and the cube
- * jumps over them right on the rhythm. The level *is* the track.
+ * Geometry-Dash style auto-runner built from the music itself.
+ * Foreground: a blocky tiled track (bass = height in whole blocks), spikes
+ * planted on beats, a cube that jumps them right on the rhythm.
+ * Background: a distant "concert" — an equalizer skyline, swaying spotlight
+ * beams and a strobe that flares on every beat.
  */
 class RhythmRunnerService : VisWallpaperService() {
     private val pal = PaletteCache(64)
     private val groundFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val groundLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 5f
-        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 6f
+        strokeJoin = Paint.Join.MITER
     }
+    private val gridPaint = Paint().apply { strokeWidth = 2f }
     private val spikePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val cubePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val eyePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val stagePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val beamPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val groundPath = Path()
+    private val fillPath = Path()
     private val spikePath = Path()
+    private val beamPath = Path()
 
-    // Terrain: ring of hill heights (0..1), one column = w/26 px.
-    private val terrain = ArrayDeque<Float>()
+    // Terrain: block levels (whole blocks, 0..3), one column = one block.
+    private val terrain = ArrayDeque<Int>()
     private var scroll = 0f
     private var smoothBass = 0f
     private var spd = 0f
@@ -40,8 +47,11 @@ class RhythmRunnerService : VisWallpaperService() {
     private var vy = 0f
     private var jumping = false
     private var rot = 0f
+    private var cubeBaseY = 0f
     private var idleTimer = 0f
     private var lastMs = 0L
+    private var strobe = 0f
+    private val skyline = FloatArray(SKY_BARS)
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
         pal.refresh(this)
@@ -56,37 +66,37 @@ class RhythmRunnerService : VisWallpaperService() {
         val dt = if (lastMs == 0L) 0f else (env.timeMs - lastMs).coerceIn(0L, 50L) / 1000f
         lastMs = env.timeMs
         val idle = audio.audioIdle
+        val rms = audio.rms.coerceIn(0f, 1f)
 
-        // Hills follow the bass: fast attack, slow release.
-        val bassTarget = if (idle) 0.25f + 0.15f * sin(env.timeMs * 0.0012f) else audio.bass
+        // ---- Track state ----
+        val bassTarget = if (idle) 0.30f + 0.20f * sin(env.timeMs * 0.0012f) else audio.bass
         smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.96f
 
         // Heavily smoothed speed: the jump arc is precomputed, so the track
         // must not change pace mid-flight or the cube lands on a spike.
-        val speedTarget = w * (if (idle) 0.30f else 0.32f + 0.22f * audio.rms.coerceIn(0f, 1f))
+        val speedTarget = w * (if (idle) 0.30f else 0.32f + 0.22f * rms)
         spd = if (spd == 0f) speedTarget else spd * 0.985f + speedTarget * 0.015f
         val speed = spd
-        val colW = w / 26f
-        while (terrain.size < 30) terrain.addLast(smoothBass)
+        val block = w / 22f
+        while (terrain.size < 26) terrain.addLast(level())
         scroll += speed * dt
-        while (scroll >= colW) {
+        while (scroll >= block) {
             terrain.removeFirst()
-            terrain.addLast(smoothBass)
-            scroll -= colW
+            terrain.addLast(level())
+            scroll -= block
         }
 
-        val base = h * 0.70f
-        val amp = h * 0.10f
-        fun groundY(x: Float): Float {
-            val f = ((x + scroll) / colW).coerceIn(0f, (terrain.size - 2).toFloat())
-            val i = f.toInt()
-            val t = f - i
-            return base - (terrain[i] * (1 - t) + terrain[i + 1] * t) * amp
-        }
+        val base = h * 0.74f
+        fun colOf(x: Float): Int = ((x + scroll) / block).toInt().coerceIn(0, terrain.size - 1)
+        fun groundY(x: Float): Float = base - terrain[colOf(x)] * block
 
-        // A beat plants a spike at the right edge. Spacing must exceed one
-        // full jump, otherwise the cube cannot physically clear both.
-        val spikeW = colW * 1.15f
+        if (env.beat) strobe = 1f
+
+        // ---- Far plane: the concert ----
+        drawStage(canvas, env, w, h, palette, rms, idle)
+
+        // ---- Spikes ----
+        val spikeW = block * 1.05f
         val jumpT = 0.6f
         if (env.beat && !idle &&
             (spikes.isEmpty() || spikes.last() <= w + spikeW - speed * jumpT * 1.35f)
@@ -96,9 +106,9 @@ class RhythmRunnerService : VisWallpaperService() {
         for (i in spikes.indices) spikes[i] -= speed * dt
         while (spikes.isNotEmpty() && spikes.first() < -spikeW * 2) spikes.removeFirst()
 
-        // Cube: jump so the apex lands right above the incoming spike.
+        // ---- Cube ----
         val cubeX = w * 0.28f
-        val cube = colW * 1.35f
+        val cube = block * 1.15f
         val jumpH = h * 0.16f
         val g = 8f * jumpH / (jumpT * jumpT)
         if (!jumping) {
@@ -131,58 +141,134 @@ class RhythmRunnerService : VisWallpaperService() {
                 jumping = false
             }
         }
+        // Smooth the base over block steps so the cube doesn't teleport.
+        val targetBase = groundY(cubeX)
+        cubeBaseY = if (cubeBaseY == 0f) targetBase else cubeBaseY + (targetBase - cubeBaseY) * 0.35f
 
-        // Ground: dark fill below, bright line on top.
+        // ---- Ground: blocky steps, GD style ----
         groundFill.color = dim(palette[56], 0.30f)
         groundLine.color = palette[44]
+        gridPaint.color = Color.argb(34, 255, 255, 255)
         groundPath.reset()
-        groundPath.moveTo(0f, groundY(0f))
-        var x = colW / 2f
-        while (x < w + colW) {
-            groundPath.lineTo(x, groundY(x))
-            x += colW / 2f
+        var col = 0
+        var x = -scroll
+        groundPath.moveTo(x, base - terrain[0] * block)
+        while (col < terrain.size) {
+            val y = base - terrain[col] * block
+            groundPath.lineTo(x, y)
+            groundPath.lineTo(x + block, y)
+            x += block
+            col++
         }
-        // Fill a closed copy first, then stroke the open profile over it.
-        spikePath.set(groundPath)
-        spikePath.lineTo(w + colW, h)
-        spikePath.lineTo(0f, h)
-        spikePath.close()
-        canvas.drawPath(spikePath, groundFill)
+        fillPath.set(groundPath)
+        fillPath.lineTo(x, h)
+        fillPath.lineTo(-scroll, h)
+        fillPath.close()
+        canvas.drawPath(fillPath, groundFill)
+        // Tile grid inside the fill.
+        var gx = -scroll
+        while (gx < w + block) {
+            canvas.drawLine(gx, groundY(gx + 1f), gx, h, gridPaint)
+            gx += block
+        }
+        var gy = base
+        while (gy < h) {
+            canvas.drawLine(0f, gy, w, gy, gridPaint)
+            gy += block
+        }
         canvas.drawPath(groundPath, groundLine)
 
-        // Spikes grow out of the terrain: same dark fill and the same bright
-        // outline as the ground line, so they read as part of the level.
+        // ---- Spikes: same fill and outline as the track ----
         spikePaint.color = dim(palette[56], 0.42f)
         for (s in spikes) {
-            val gy = groundY(s) + groundLine.strokeWidth
+            val sy = groundY(s)
             spikePath.reset()
-            spikePath.moveTo(s - spikeW * 0.55f, gy)
-            spikePath.lineTo(s, gy - spikeW * 1.35f)
-            spikePath.lineTo(s + spikeW * 0.55f, gy)
+            spikePath.moveTo(s - spikeW * 0.55f, sy)
+            spikePath.lineTo(s, sy - spikeW * 1.35f)
+            spikePath.lineTo(s + spikeW * 0.55f, sy)
             spikePath.close()
             canvas.drawPath(spikePath, spikePaint)
             canvas.drawPath(spikePath, groundLine)
         }
 
-        // Cube with a simple face, rotating in flight like the original.
-        val cy = groundY(cubeX) - yOff - cube / 2f
+        // ---- Cube ----
+        val cy = cubeBaseY - yOff - cube / 2f
         cubePaint.color = palette[30]
         eyePaint.color = dim(palette[56], 0.25f)
         canvas.save()
         canvas.rotate(rot, cubeX, cy)
         canvas.drawRoundRect(
             cubeX - cube / 2f, cy - cube / 2f, cubeX + cube / 2f, cy + cube / 2f,
-            cube * 0.18f, cube * 0.18f, cubePaint
+            cube * 0.16f, cube * 0.16f, cubePaint
         )
         val e = cube * 0.13f
         canvas.drawCircle(cubeX - cube * 0.16f, cy - cube * 0.10f, e, eyePaint)
         canvas.drawCircle(cubeX + cube * 0.16f, cy - cube * 0.10f, e, eyePaint)
         canvas.restore()
+
+        strobe *= 0.88f
+        if (strobe < 0.02f) strobe = 0f
     }
+
+    /** Distant stage: equalizer skyline, spotlight beams, beat strobe. */
+    private fun drawStage(
+        canvas: Canvas, env: PaintEnv, w: Float, h: Float,
+        palette: IntArray, rms: Float, idle: Boolean
+    ) {
+        val horizon = h * 0.56f
+
+        // Beat strobe behind everything: a soft flare over the stage.
+        if (strobe > 0f) {
+            stagePaint.color = palette[20]
+            stagePaint.alpha = (strobe * 70f).toInt()
+            canvas.drawCircle(w * 0.62f, horizon - h * 0.10f, h * 0.16f + strobe * h * 0.06f, stagePaint)
+        }
+
+        // Spotlight beams swaying from above the stage.
+        val t = env.timeMs * 0.001f
+        beamPaint.color = palette[16]
+        for (k in 0 until 3) {
+            val ox = w * (0.30f + 0.22f * k)
+            val sway = sin(t * (0.5f + 0.13f * k) + k * 2.1f) * w * 0.10f
+            beamPaint.alpha = (14f + rms * 36f + strobe * 40f).toInt().coerceAtMost(90)
+            beamPath.reset()
+            beamPath.moveTo(ox, -h * 0.02f)
+            beamPath.lineTo(ox + sway - w * 0.045f, horizon)
+            beamPath.lineTo(ox + sway + w * 0.045f, horizon)
+            beamPath.close()
+            canvas.drawPath(beamPath, beamPaint)
+        }
+
+        // Equalizer skyline: the "crowd/stage" dancing at the horizon.
+        val s = env.audio.spectrum
+        val bw = w / SKY_BARS
+        stagePaint.color = dim(palette[38], 0.55f)
+        stagePaint.alpha = 150
+        for (i in 0 until SKY_BARS) {
+            val target = if (idle || s.isEmpty()) {
+                0.15f + 0.10f * sin(i * 0.7f + t * 1.8f)
+            } else {
+                s[(i * s.size) / SKY_BARS].coerceIn(0f, 1f)
+            }
+            val old = skyline[i]
+            skyline[i] = if (target > old) target else old * 0.92f
+            val bh = skyline[i] * h * 0.10f
+            canvas.drawRect(i * bw + 1f, horizon - bh, (i + 1) * bw - 1f, horizon, stagePaint)
+        }
+        // Thin stage edge.
+        stagePaint.alpha = 70
+        canvas.drawRect(0f, horizon, w, horizon + 3f, stagePaint)
+    }
+
+    private fun level(): Int = (smoothBass * 3.4f).toInt().coerceIn(0, 3)
 
     private fun dim(c: Int, k: Float): Int = Color.rgb(
         (Color.red(c) * k).toInt(),
         (Color.green(c) * k).toInt(),
         (Color.blue(c) * k).toInt()
     )
+
+    companion object {
+        private const val SKY_BARS = 28
+    }
 }
