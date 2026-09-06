@@ -32,6 +32,7 @@ class ModesInfoActivity : AppCompatActivity() {
         entry(list, R.string.wallpaper_dots, R.string.info_dots)
         entry(list, R.string.wallpaper_vu, R.string.info_vu)
         entry(list, R.string.wallpaper_radial, R.string.info_radial)
+        entry(list, R.string.wallpaper_runner, R.string.info_runner)
         entry(list, R.string.wallpaper_lightshow, R.string.info_lightshow)
 
         section(list, R.string.group_no_volume)

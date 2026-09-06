@@ -80,6 +80,13 @@
             android:text="@string/wallpaper_radial" />
 
         <Button
+            android:id="@+id/setRunner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/wallpaper_runner" />
+
+        <Button
             android:id="@+id/setLightshow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

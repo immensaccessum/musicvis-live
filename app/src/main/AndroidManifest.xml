@@ -199,6 +199,19 @@
         </service>
 
         <service
+            android:name=".wallpapers.RhythmRunnerService"
+            android:exported="true"
+            android:label="@string/wallpaper_runner"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper_runner" />
+        </service>
+
+        <service
             android:name=".NowPlayingListener"
             android:exported="true"
             android:label="@string/nowplaying_service"

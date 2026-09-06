@@ -19,5 +19,7 @@ data class PaintEnv(
     val touchX: Float,
     val touchY: Float,
     val touchBoost: Float,
-    val zoomOut: Boolean
+    val zoomOut: Boolean,
+    /** True on the frame the shared beat detector fired. */
+    val beat: Boolean = false
 )

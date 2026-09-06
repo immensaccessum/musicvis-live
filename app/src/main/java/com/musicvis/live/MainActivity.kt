@@ -23,6 +23,7 @@ import com.musicvis.live.wallpapers.IceWaveService
 import com.musicvis.live.wallpapers.LightShowService
 import com.musicvis.live.wallpapers.OctaveSpectrumService
 import com.musicvis.live.wallpapers.RadialSpectrumService
+import com.musicvis.live.wallpapers.RhythmRunnerService
 import com.musicvis.live.wallpapers.ScopeService
 import com.musicvis.live.wallpapers.VuMeterService
 import com.musicvis.live.wallpapers.WaterfallService
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         binding.setDots.setOnClickListener { pick(DotsService::class.java) }
         binding.setScope.setOnClickListener { pick(ScopeService::class.java) }
         binding.setRadial.setOnClickListener { pick(RadialSpectrumService::class.java) }
+        binding.setRunner.setOnClickListener { pick(RhythmRunnerService::class.java) }
         binding.setLightshow.setOnClickListener { pick(LightShowService::class.java) }
         binding.openLab.setOnClickListener {
             startActivity(Intent(this, FftLabActivity::class.java))

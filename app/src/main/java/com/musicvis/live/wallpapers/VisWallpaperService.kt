@@ -251,7 +251,8 @@ abstract class VisWallpaperService : WallpaperService() {
                             touchX = touchX,
                             touchY = touchY,
                             touchBoost = touchBoost,
-                            zoomOut = FeaturePrefs.zoomOut(this@VisWallpaperService)
+                            zoomOut = FeaturePrefs.zoomOut(this@VisWallpaperService),
+                            beat = partyFx.beat
                         )
                     )
                     if (FeaturePrefs.nowPlaying(this@VisWallpaperService)) {

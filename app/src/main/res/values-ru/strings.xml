@@ -53,6 +53,8 @@
     <string name="scope_desc">Сырая волна тонкой линией на сетке, как на экране осциллографа.</string>
     <string name="wallpaper_radial">Круговой спектр</string>
     <string name="radial_desc">Частоты по кругу, центр дышит с громкостью.</string>
+    <string name="wallpaper_runner">Ритм-раннер</string>
+    <string name="runner_desc">Кубик бежит по трассе из музыки и прыгает в бит.</string>
     <string name="group_volume">Реагируют на громкость телефона</string>
     <string name="group_no_volume">Не зависят от громкости</string>
     <string name="group_settings">Настройки</string>
@@ -87,6 +89,7 @@
     <string name="info_dots">История волны как рой точек: каждая новая строка волны отодвигает старые вглубь, где они гаснут.</string>
     <string name="info_vu">Аналоговая стрелка показывает громкость (RMS): быстрый подъём, медленный спад, плюс лампа пиков — как на кассетных деках. Как vis4.</string>
     <string name="info_radial">Частотные столбики по кругу; ядро в центре пульсирует с общей громкостью. FFT + RMS.</string>
+    <string name="info_runner">Авто-раннер, где уровень генерирует музыка: холмы повторяют бас, на каждом ударе вырастает шип, а кубик перепрыгивает их точно в ритм. Бас + детектор бита.</string>
     <string name="info_fft">Настоящая частотная гистограмма (FFT): низкие частоты слева, высокие справа. Рисуется в OpenGL до 120 Гц. Как vis3.</string>
     <string name="info_octave">Тот же FFT на логарифмической шкале частот, как у эквалайзера: басу больше места, верхá сжаты. OpenGL.</string>
     <string name="info_waterfall">Спектрограмма: каждая строка — один снимок FFT, свежий звук сверху, время течёт вниз. Цвет — энергия.</string>
