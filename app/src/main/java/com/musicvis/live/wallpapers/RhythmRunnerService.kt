@@ -26,10 +26,11 @@ class RhythmRunnerService : VisWallpaperService() {
     private val groundPath = Path()
     private val spikePath = Path()
 
-    // Terrain: ring of hill heights (0..1), one column = w/40 px.
+    // Terrain: ring of hill heights (0..1), one column = w/26 px.
     private val terrain = ArrayDeque<Float>()
     private var scroll = 0f
     private var smoothBass = 0f
+    private var spd = 0f
 
     // Spikes: screen x positions moving left.
     private val spikes = ArrayDeque<Float>()
@@ -60,9 +61,13 @@ class RhythmRunnerService : VisWallpaperService() {
         val bassTarget = if (idle) 0.25f + 0.15f * sin(env.timeMs * 0.0012f) else audio.bass
         smoothBass = if (bassTarget > smoothBass) bassTarget else smoothBass * 0.96f
 
-        val speed = w * (if (idle) 0.28f else 0.30f + 0.25f * audio.rms.coerceIn(0f, 1f))
-        val colW = w / 40f
-        while (terrain.size < 44) terrain.addLast(smoothBass)
+        // Heavily smoothed speed: the jump arc is precomputed, so the track
+        // must not change pace mid-flight or the cube lands on a spike.
+        val speedTarget = w * (if (idle) 0.30f else 0.32f + 0.22f * audio.rms.coerceIn(0f, 1f))
+        spd = if (spd == 0f) speedTarget else spd * 0.985f + speedTarget * 0.015f
+        val speed = spd
+        val colW = w / 26f
+        while (terrain.size < 30) terrain.addLast(smoothBass)
         scroll += speed * dt
         while (scroll >= colW) {
             terrain.removeFirst()
@@ -79,10 +84,12 @@ class RhythmRunnerService : VisWallpaperService() {
             return base - (terrain[i] * (1 - t) + terrain[i + 1] * t) * amp
         }
 
-        // A beat plants a spike at the right edge (with a minimum spacing).
-        val spikeW = colW * 1.0f
+        // A beat plants a spike at the right edge. Spacing must exceed one
+        // full jump, otherwise the cube cannot physically clear both.
+        val spikeW = colW * 1.15f
+        val jumpT = 0.6f
         if (env.beat && !idle &&
-            (spikes.isEmpty() || spikes.last() < w - speed * 0.35f)
+            (spikes.isEmpty() || spikes.last() <= w + spikeW - speed * jumpT * 1.35f)
         ) {
             spikes.addLast(w + spikeW)
         }
@@ -92,14 +99,13 @@ class RhythmRunnerService : VisWallpaperService() {
         // Cube: jump so the apex lands right above the incoming spike.
         val cubeX = w * 0.28f
         val cube = colW * 1.35f
-        val jumpT = 0.55f
-        val jumpH = h * 0.13f
+        val jumpH = h * 0.16f
         val g = 8f * jumpH / (jumpT * jumpT)
         if (!jumping) {
             val trigger = speed * jumpT / 2f
             for (s in spikes) {
                 val d = s - cubeX
-                if (d > cube * 0.4f && d < trigger) {
+                if (d > 0f && d <= trigger) {
                     jumping = true
                     vy = g * jumpT / 2f
                     break
@@ -144,16 +150,18 @@ class RhythmRunnerService : VisWallpaperService() {
         canvas.drawPath(spikePath, groundFill)
         canvas.drawPath(groundPath, groundLine)
 
-        // Spikes sit on the ground.
-        spikePaint.color = palette[10]
+        // Spikes grow out of the terrain: same dark fill and the same bright
+        // outline as the ground line, so they read as part of the level.
+        spikePaint.color = dim(palette[56], 0.42f)
         for (s in spikes) {
-            val gy = groundY(s)
+            val gy = groundY(s) + groundLine.strokeWidth
             spikePath.reset()
-            spikePath.moveTo(s - spikeW / 2f, gy)
-            spikePath.lineTo(s, gy - spikeW * 1.25f)
-            spikePath.lineTo(s + spikeW / 2f, gy)
+            spikePath.moveTo(s - spikeW * 0.55f, gy)
+            spikePath.lineTo(s, gy - spikeW * 1.35f)
+            spikePath.lineTo(s + spikeW * 0.55f, gy)
             spikePath.close()
             canvas.drawPath(spikePath, spikePaint)
+            canvas.drawPath(spikePath, groundLine)
         }
 
         // Cube with a simple face, rotating in flight like the original.

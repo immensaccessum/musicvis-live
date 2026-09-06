@@ -21,8 +21,8 @@ android {
         applicationId = "com.musicvis.live"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "1.10.0"
+        versionCode = 29
+        versionName = "1.10.1"
     }
 
     signingConfigs {
