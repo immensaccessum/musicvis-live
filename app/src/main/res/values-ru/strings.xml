@@ -61,6 +61,9 @@
 
     <string name="feat_mic">Микрофон вместо системного звука</string>
     <string name="feat_note">Показывать ноту (микрофон, радиальный спектр)</string>
+    <string name="tile_source">Источник звука</string>
+    <string name="tile_mic">Микрофон</string>
+    <string name="tile_system">Системный звук</string>
     <string name="note_names">до,до♯,ре,ре♯,ми,фа,фа♯,соль,соль♯,ля,ля♯,си</string>
     <string name="feat_bg">Фон: градиент из палитры (дышит с музыкой)</string>
     <string name="fx_title">Фон и эффекты</string>

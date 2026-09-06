@@ -61,6 +61,9 @@
 
     <string name="feat_mic">Microphone instead of system audio</string>
     <string name="feat_note">Show hummed note (mic, radial spectrum)</string>
+    <string name="tile_source">Audio source</string>
+    <string name="tile_mic">Microphone</string>
+    <string name="tile_system">System audio</string>
     <string name="note_names">C,C#,D,D#,E,F,F#,G,G#,A,A#,B</string>
     <string name="feat_bg">Background: palette gradient (breathes with music)</string>
     <string name="fx_title">Background and effects</string>
