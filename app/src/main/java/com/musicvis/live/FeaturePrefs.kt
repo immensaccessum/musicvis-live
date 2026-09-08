@@ -20,6 +20,8 @@ object FeaturePrefs {
     fun noteDisplay(c: Context) = p(c).getBoolean("note_display", false)
     fun bgGradient(c: Context) = p(c).getBoolean("bg_gradient", false)
     fun fxFlash(c: Context) = p(c).getBoolean("fx_flash", false)
+    /** 0–100, peak opacity of the beat flash. 100 = current default strength. */
+    fun fxFlashOpacity(c: Context) = p(c).getInt("fx_flash_op", 100)
     fun fxColorCycle(c: Context) = p(c).getBoolean("fx_cycle", false)
     fun fxWaves(c: Context) = p(c).getBoolean("fx_waves", false)
     fun fxTrails(c: Context) = p(c).getBoolean("fx_trails", false)
@@ -45,6 +47,7 @@ object FeaturePrefs {
     fun setNoteDisplay(c: Context, v: Boolean) = p(c).edit { putBoolean("note_display", v) }
     fun setBgGradient(c: Context, v: Boolean) = p(c).edit { putBoolean("bg_gradient", v) }
     fun setFxFlash(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_flash", v) }
+    fun setFxFlashOpacity(c: Context, v: Int) = p(c).edit { putInt("fx_flash_op", v.coerceIn(0, 100)) }
     fun setFxColorCycle(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_cycle", v) }
     fun setFxWaves(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_waves", v) }
     fun setFxTrails(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_trails", v) }

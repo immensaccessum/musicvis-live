@@ -19,6 +19,15 @@ class FxSettingsActivity : AppCompatActivity() {
         binding.fxTrails.isChecked = FeaturePrefs.fxTrails(this)
         binding.party.isChecked = FeaturePrefs.party(this)
 
+        val op = FeaturePrefs.fxFlashOpacity(this)
+        binding.fxFlashOpacity.value = op.toFloat()
+        binding.fxFlashOpacityLabel.text = getString(R.string.fx_flash_opacity, op)
+        binding.fxFlashOpacity.addOnChangeListener { _, value, fromUser ->
+            val n = value.toInt()
+            binding.fxFlashOpacityLabel.text = getString(R.string.fx_flash_opacity, n)
+            if (fromUser) FeaturePrefs.setFxFlashOpacity(this, n)
+        }
+
         binding.bgGradient.setOnCheckedChangeListener { _, v -> FeaturePrefs.setBgGradient(this, v) }
         binding.fxFlash.setOnCheckedChangeListener { _, v -> FeaturePrefs.setFxFlash(this, v) }
         binding.fxCycle.setOnCheckedChangeListener { _, v -> FeaturePrefs.setFxColorCycle(this, v) }

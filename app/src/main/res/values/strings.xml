@@ -71,6 +71,7 @@
     <string name="fx_title">Background and effects</string>
     <string name="fx_hint">Everything here works on top of any wallpaper mode and applies instantly. Flash and rings follow the kick drum.</string>
     <string name="fx_flash">Beat flash</string>
+    <string name="fx_flash_opacity">Flash opacity: %d%%</string>
     <string name="fx_cycle">Auto color cycling (full circle ~26 s)</string>
     <string name="fx_waves">Shockwave rings on beat</string>
     <string name="fx_trails">Neon trails (Spectrum and Octaves)</string>

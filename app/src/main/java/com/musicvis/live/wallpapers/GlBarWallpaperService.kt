@@ -177,7 +177,7 @@ abstract class GlBarWallpaperService : WallpaperService() {
                     heights, rot, 0f,
                     if (useBg) bgColors else null, bgLevel,
                     if (trailsOn) trailHeights else null,
-                    partyFx.flash
+                    partyFx.flash * FeaturePrefs.fxFlashOpacity(this@GlBarWallpaperService) / 100f
                 )
                 egl.swap()
             }

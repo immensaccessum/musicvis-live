@@ -71,6 +71,7 @@
     <string name="fx_title">Фон и эффекты</string>
     <string name="fx_hint">Всё здесь работает поверх любого режима обоев и применяется сразу. Вспышка и кольца следуют за бочкой.</string>
     <string name="fx_flash">Вспышка на бит</string>
+    <string name="fx_flash_opacity">Сила вспышки: %d%%</string>
     <string name="fx_cycle">Автосмена цвета (полный круг ~26 с)</string>
     <string name="fx_waves">Кольца от бита</string>
     <string name="fx_trails">Неоновые трейлы (Спектр и Октавы)</string>

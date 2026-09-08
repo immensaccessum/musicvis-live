@@ -69,8 +69,9 @@ class PartyFx(private val context: Context) {
             rings[i] = if (age + 0.028f >= 1f) -1f else age + 0.028f
         }
         if (flash > 0f) {
+            val op = FeaturePrefs.fxFlashOpacity(context) / 100f
             canvas.drawColor(
-                Color.argb((flash * 130f).toInt().coerceIn(0, 255),
+                Color.argb((flash * 130f * op).toInt().coerceIn(0, 255),
                     Color.red(flashColor), Color.green(flashColor), Color.blue(flashColor))
             )
         }
