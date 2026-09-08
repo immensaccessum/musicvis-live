@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
 import com.musicvis.live.FeaturePrefs
@@ -31,9 +32,11 @@ class RadialSpectrumService : VisWallpaperService() {
     private val smooth = FloatArray(BARS)
     private val pal = PaletteCache(256)
     private val bgPaint = Paint()
+    private val wellPaint = Paint()
     private val bands = FloatArray(3)
     private var shaderKey = 0
     private var shaderH = 0
+    private var wellKey = 0
     private var idlePhase = 0
     private var angle = 0f
     private var lastMs = 0L
@@ -53,12 +56,11 @@ class RadialSpectrumService : VisWallpaperService() {
 
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
-        drawBandBg(canvas, env.audio, palette, w, h)
-
         val cx = w / 2f + env.tiltX * w * 0.03f
         val cy = h / 2f + env.tiltY * h * 0.02f
         val r0 = minOf(w, h) * 0.20f
         val rMax = minOf(w, h) * 0.26f
+        drawBandBg(canvas, env.audio, palette, w, h, cx, cy)
 
         val audio = env.audio
         val spectrum = audio.spectrum
@@ -105,8 +107,19 @@ class RadialSpectrumService : VisWallpaperService() {
         }
     }
 
-    /** Full-screen gradient: highs at the top, mids in the center, bass at the bottom. */
-    private fun drawBandBg(canvas: Canvas, audio: AudioEngine, palette: IntArray, w: Float, h: Float) {
+    /**
+     * Club lighting: bass / mids / highs color the walls, while a dark well
+     * under the ring keeps the spectrum readable (same navy as before).
+     */
+    private fun drawBandBg(
+        canvas: Canvas,
+        audio: AudioEngine,
+        palette: IntArray,
+        w: Float,
+        h: Float,
+        cx: Float,
+        cy: Float
+    ) {
         var bass = 0f
         var mid = 0f
         var high = 0f
@@ -136,12 +149,27 @@ class RadialSpectrumService : VisWallpaperService() {
             )
         }
         canvas.drawRect(0f, 0f, w, h, bgPaint)
+
+        val wellR = minOf(w, h) * 0.90f
+        val wk = (cx.toInt() shl 20) xor (cy.toInt() shl 8) xor wellR.toInt()
+        if (wk != wellKey) {
+            wellKey = wk
+            // Opaque through the bar tips (~0.49 of min side), then the lamp shows at the edges.
+            wellPaint.shader = RadialGradient(
+                cx, cy, wellR,
+                intArrayOf(STAGE, Color.argb(250, 5, 7, 14), Color.argb(80, 5, 7, 14), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.56f, 0.76f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w, h, wellPaint)
     }
 
     private fun quant(v: Float) = (v.coerceIn(0f, 1f) * 24).toInt()
 
+    /** Wall wash: keep the hue, never compete with the bars. Peak ~half of palette. */
     private fun lit(c: Int, level: Float): Int {
-        val b = 0.10f + 0.90f * level.coerceIn(0f, 1f).pow(0.75f)
+        val b = 0.07f + 0.48f * level.coerceIn(0f, 1f).pow(0.75f)
         return Color.rgb(
             (Color.red(c) * b).toInt(),
             (Color.green(c) * b).toInt(),
@@ -228,5 +256,6 @@ class RadialSpectrumService : VisWallpaperService() {
 
     companion object {
         private const val BARS = 96
+        private val STAGE = Color.rgb(5, 7, 14)
     }
 }

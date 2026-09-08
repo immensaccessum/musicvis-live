@@ -6,6 +6,8 @@ import android.app.Notification
 
 object NowPlaying {
     @Volatile var line: String? = null
+    @Volatile var title: String? = null
+    @Volatile var artist: String? = null
 }
 
 class NowPlayingListener : NotificationListenerService() {
@@ -23,7 +25,8 @@ class NowPlayingListener : NotificationListenerService() {
 
     private fun refresh(list: Array<StatusBarNotification>?) {
         if (list == null) return
-        var best: String? = null
+        var bestTitle: String? = null
+        var bestArtist: String? = null
         for (n in list) {
             val extras = n.notification.extras
             val cat = n.notification.category
@@ -33,10 +36,17 @@ class NowPlayingListener : NotificationListenerService() {
             val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
             if (!title.isNullOrBlank()) {
-                best = if (!text.isNullOrBlank()) "$title — $text" else title
+                bestTitle = title.trim()
+                bestArtist = text?.trim()?.takeIf { it.isNotEmpty() && it != bestTitle }
                 if (cat == Notification.CATEGORY_TRANSPORT) break
             }
         }
-        NowPlaying.line = best
+        NowPlaying.title = bestTitle
+        NowPlaying.artist = bestArtist
+        NowPlaying.line = when {
+            bestTitle == null -> null
+            bestArtist != null -> "$bestTitle — $bestArtist"
+            else -> bestTitle
+        }
     }
 }

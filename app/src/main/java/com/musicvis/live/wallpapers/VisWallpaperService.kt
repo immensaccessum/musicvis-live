@@ -16,6 +16,8 @@ import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
+import android.text.TextPaint
+import android.text.TextUtils
 import android.view.WindowInsets
 import com.musicvis.live.BackgroundPainter
 import com.musicvis.live.BeatHaptics
@@ -45,6 +47,7 @@ abstract class VisWallpaperService : WallpaperService() {
         @Volatile private var tiltY = 0f
         @Volatile private var zoom = 1f
         @Volatile private var cutoutTop = 0f
+        @Volatile private var insetBottom = 0f
         @Volatile private var corner = 48f
         @Volatile private var touchX = 0.5f
         @Volatile private var touchY = 0.5f
@@ -53,13 +56,18 @@ abstract class VisWallpaperService : WallpaperService() {
         private val bgPainter = BackgroundPainter(this@VisWallpaperService)
         private val partyFx = PartyFx(this@VisWallpaperService)
         private val haptics = BeatHaptics(this@VisWallpaperService)
-        // One shared paint for the "now playing" line: allocating it per frame
-        // in every mode was both duplicated code and 120 allocations/second.
-        private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(200, 220, 228, 255)
-            textSize = 36f
+        private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(225, 236, 240, 255)
             textAlign = Paint.Align.CENTER
+            setShadowLayer(6f, 0f, 2f, Color.argb(200, 0, 0, 0))
         }
+        private val artistPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(165, 210, 218, 240)
+            textAlign = Paint.Align.CENTER
+            setShadowLayer(5f, 0f, 1f, Color.argb(180, 0, 0, 0))
+        }
+        private var marqueeSrc = ""
+        private var marqueeStart = 0L
         private var lastWidget = 0L
         private var lastColorKey: String? = null
         private var frame = 0
@@ -99,6 +107,12 @@ abstract class VisWallpaperService : WallpaperService() {
                 cutoutTop = cut?.safeInsetTop?.toFloat() ?: insets.systemWindowInsetTop.toFloat()
             } else {
                 cutoutTop = insets.systemWindowInsetTop.toFloat()
+            }
+            insetBottom = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom.toFloat()
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom.toFloat()
             }
             if (Build.VERSION.SDK_INT >= 31) {
                 val r = insets.getRoundedCorner(android.view.RoundedCorner.POSITION_TOP_LEFT)
@@ -256,9 +270,7 @@ abstract class VisWallpaperService : WallpaperService() {
                         )
                     )
                     if (FeaturePrefs.nowPlaying(this@VisWallpaperService)) {
-                        NowPlaying.line?.let { title ->
-                            canvas.drawText(title, canvas.width / 2f, canvas.height - 80f, trackPaint)
-                        }
+                        drawNowPlaying(canvas)
                     }
                     partyFx.draw(canvas)
                     if (FeaturePrefs.zoomOut(this@VisWallpaperService) && zoom != 0f && zoom != 1f) {
@@ -289,6 +301,74 @@ abstract class VisWallpaperService : WallpaperService() {
                 notifyColorsChanged()
             }
             postFrame()
+        }
+
+        /**
+         * Title sits above the launcher dock (OriginOS hotseat covers the old
+         * height-80px line). Long titles marquee; artist is a second ellipsized line.
+         */
+        private fun drawNowPlaying(canvas: Canvas) {
+            val title = NowPlaying.title ?: NowPlaying.line ?: return
+            val artist = NowPlaying.artist
+            val d = resources.displayMetrics.density
+            titlePaint.textSize = 15f * d
+            artistPaint.textSize = 12f * d
+            val maxW = canvas.width - 56f * d
+            val cx = canvas.width / 2f
+            // Dock ~80–110 dp + gesture bar; wallpaper insets are often 0.
+            val lift = maxOf(insetBottom + 118f * d, 148f * d)
+            val artistY = canvas.height - lift
+            if (!artist.isNullOrBlank()) {
+                drawFitted(canvas, artist, cx, artistY, maxW, artistPaint, marquee = false)
+                drawFitted(canvas, title, cx, artistY - 20f * d, maxW, titlePaint, marquee = true)
+            } else {
+                drawFitted(canvas, title, cx, artistY, maxW, titlePaint, marquee = true)
+            }
+        }
+
+        private fun drawFitted(
+            canvas: Canvas,
+            text: String,
+            cx: Float,
+            y: Float,
+            maxW: Float,
+            paint: TextPaint,
+            marquee: Boolean
+        ) {
+            val tw = paint.measureText(text)
+            if (tw <= maxW) {
+                paint.textAlign = Paint.Align.CENTER
+                canvas.drawText(text, cx, y, paint)
+                return
+            }
+            if (!marquee) {
+                paint.textAlign = Paint.Align.CENTER
+                val cut = TextUtils.ellipsize(text, paint, maxW, TextUtils.TruncateAt.END)
+                canvas.drawText(cut, 0, cut.length, cx, y, paint)
+                return
+            }
+            if (text != marqueeSrc) {
+                marqueeSrc = text
+                marqueeStart = SystemClock.uptimeMillis()
+            }
+            val extra = tw - maxW
+            val speed = 34f * resources.displayMetrics.density
+            val pause = 1600L
+            val moveMs = (extra / speed * 1000f).toLong().coerceAtLeast(900L)
+            val cycle = pause + moveMs + pause
+            val t = (SystemClock.uptimeMillis() - marqueeStart) % cycle
+            val scroll = when {
+                t < pause -> 0f
+                t < pause + moveMs -> extra * ((t - pause).toFloat() / moveMs)
+                else -> extra
+            }
+            val left = cx - maxW / 2f
+            canvas.save()
+            canvas.clipRect(left, y + paint.ascent() - 4f, left + maxW, y + paint.descent() + 4f)
+            paint.textAlign = Paint.Align.LEFT
+            canvas.drawText(text, left - scroll, y, paint)
+            canvas.restore()
+            paint.textAlign = Paint.Align.CENTER
         }
     }
 }
