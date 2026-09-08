@@ -2,7 +2,9 @@ package com.musicvis.live.wallpapers
 
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.Typeface
 import com.musicvis.live.FeaturePrefs
 import com.musicvis.live.R
@@ -11,6 +13,7 @@ import com.musicvis.live.audio.AudioEngine
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.ln
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -26,7 +29,12 @@ class RadialSpectrumService : VisWallpaperService() {
     }
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val smooth = FloatArray(BARS)
-    private val pal = PaletteCache(BARS)
+    private val pal = PaletteCache(256)
+    private val bgPaint = Paint()
+    private val bands = FloatArray(3)
+    private var shaderKey = 0
+    private var shaderH = 0
+    private var idlePhase = 0
     private var angle = 0f
     private var lastMs = 0L
     private var dispHz = 0f
@@ -39,12 +47,14 @@ class RadialSpectrumService : VisWallpaperService() {
     private val tunerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun paint(canvas: Canvas, env: PaintEnv) {
-        pal.refresh(this)
+        if (pal.refresh(this)) shaderKey = 0
         val palette = pal.colors
+        if (palette.isEmpty()) return
 
-        env.bg.draw(canvas, env.audio, Color.rgb(5, 7, 14))
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
+        drawBandBg(canvas, env.audio, palette, w, h)
+
         val cx = w / 2f + env.tiltX * w * 0.03f
         val cy = h / 2f + env.tiltY * h * 0.02f
         val r0 = minOf(w, h) * 0.20f
@@ -72,7 +82,7 @@ class RadialSpectrumService : VisWallpaperService() {
             val a = (i.toFloat() / BARS) * (Math.PI * 2).toFloat() + rot
             val ca = cos(a)
             val sa = sin(a)
-            barPaint.color = palette[i]
+            barPaint.color = palette[i * (palette.size - 1) / (BARS - 1)]
             canvas.drawLine(
                 cx + ca * r0, cy + sa * r0,
                 cx + ca * (r0 + len), cy + sa * (r0 + len),
@@ -93,6 +103,50 @@ class RadialSpectrumService : VisWallpaperService() {
             corePaint.color = Color.argb((env.touchBoost * 80).toInt(), 200, 225, 255)
             canvas.drawCircle(env.touchX * w, env.touchY * h, 40f + env.touchBoost * 140f, corePaint)
         }
+    }
+
+    /** Full-screen gradient: highs at the top, mids in the center, bass at the bottom. */
+    private fun drawBandBg(canvas: Canvas, audio: AudioEngine, palette: IntArray, w: Float, h: Float) {
+        var bass = 0f
+        var mid = 0f
+        var high = 0f
+        val s = audio.spectrum
+        for (i in 0..3) bass = max(bass, s[i])
+        for (i in 4..14) mid = max(mid, s[i])
+        for (i in 15 until s.size) high = max(high, s[i])
+        idlePhase++
+        val mix = audio.idleMix()
+        if (mix > 0.001f) {
+            bass = bass * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.017f)) * mix
+            mid = mid * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.023f + 2f)) * mix
+            high = high * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.011f + 4f)) * mix
+        }
+        bands[0] = if (bass > bands[0]) bass else bands[0] * 0.93f
+        bands[1] = if (mid > bands[1]) mid else bands[1] * 0.93f
+        bands[2] = if (high > bands[2]) high else bands[2] * 0.93f
+        val q = (quant(bands[0]) shl 16) or (quant(bands[1]) shl 8) or quant(bands[2])
+        if (q != shaderKey || h.toInt() != shaderH) {
+            shaderKey = q
+            shaderH = h.toInt()
+            bgPaint.shader = LinearGradient(
+                0f, 0f, 0f, h,
+                intArrayOf(lit(palette[215], bands[2]), lit(palette[128], bands[1]), lit(palette[40], bands[0])),
+                floatArrayOf(0.1f, 0.5f, 0.9f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, w, h, bgPaint)
+    }
+
+    private fun quant(v: Float) = (v.coerceIn(0f, 1f) * 24).toInt()
+
+    private fun lit(c: Int, level: Float): Int {
+        val b = 0.10f + 0.90f * level.coerceIn(0f, 1f).pow(0.75f)
+        return Color.rgb(
+            (Color.red(c) * b).toInt(),
+            (Color.green(c) * b).toInt(),
+            (Color.blue(c) * b).toInt()
+        )
     }
 
     /**

@@ -173,19 +173,6 @@
         </service>
 
         <service
-            android:name=".wallpapers.LightShowService"
-            android:exported="true"
-            android:label="@string/wallpaper_lightshow"
-            android:permission="android.permission.BIND_WALLPAPER">
-            <intent-filter>
-                <action android:name="android.service.wallpaper.WallpaperService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.service.wallpaper"
-                android:resource="@xml/wallpaper_lightshow" />
-        </service>
-
-        <service
             android:name=".wallpapers.RadialSpectrumService"
             android:exported="true"
             android:label="@string/wallpaper_radial"

@@ -20,7 +20,6 @@ import com.musicvis.live.wallpapers.ClassicHistogramService
 import com.musicvis.live.wallpapers.DotsService
 import com.musicvis.live.wallpapers.FftHistogramService
 import com.musicvis.live.wallpapers.IceWaveService
-import com.musicvis.live.wallpapers.LightShowService
 import com.musicvis.live.wallpapers.OctaveSpectrumService
 import com.musicvis.live.wallpapers.RadialSpectrumService
 import com.musicvis.live.wallpapers.RhythmRunnerService
@@ -58,7 +57,6 @@ class MainActivity : AppCompatActivity() {
         binding.setScope.setOnClickListener { pick(ScopeService::class.java) }
         binding.setRadial.setOnClickListener { pick(RadialSpectrumService::class.java) }
         binding.setRunner.setOnClickListener { pick(RhythmRunnerService::class.java) }
-        binding.setLightshow.setOnClickListener { pick(LightShowService::class.java) }
         binding.openLab.setOnClickListener {
             startActivity(Intent(this, FftLabActivity::class.java))
         }
