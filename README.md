@@ -5,9 +5,7 @@ Android-приложение с живыми обоями, которые рис
 *Live wallpaper audio visualizer for Android: real-time spectrum, waveform, oscilloscope and more. English and Russian UI included.*
 
 <p align="center">
-  <img src="screenshots/wallpaper-radial.jpg" width="240" alt="Круговой спектр на рабочем столе">
-  <img src="screenshots/app-modes.jpg" width="240" alt="Выбор режима">
-  <img src="screenshots/app-settings.jpg" width="240" alt="Настройки">
+  <img src="screenshots/preview.jpg" alt="MusicVis Live: круговой спектр, режимы, настройки">
 </p>
 
 ## Предыстория
