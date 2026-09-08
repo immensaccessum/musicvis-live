@@ -4,6 +4,12 @@ Android-приложение с живыми обоями, которые рис
 
 *Live wallpaper audio visualizer for Android: real-time spectrum, waveform, oscilloscope and more. English and Russian UI included.*
 
+<p align="center">
+  <img src="screenshots/wallpaper-radial.jpg" width="240" alt="Круговой спектр на рабочем столе">
+  <img src="screenshots/app-modes.jpg" width="240" alt="Выбор режима">
+  <img src="screenshots/app-settings.jpg" width="240" alt="Настройки">
+</p>
+
 ## Предыстория
 
 Когда-то я случайно нашёл в интернете живые обои «Фоновые рисунки: аудиовизуализация» (MusicVis из AOSP, `com.android.musicvis`) — лёд, огонь, VU-метр, столбики под музыку — и много лет ими пользовался. Изначально это был системный компонент старых Android, поэтому на новых версиях он ставился только в виде модов; один такой мод продлил приложению жизнь ещё на несколько лет. Но на современном смартфоне (vivo, OriginOS, Android 16) перестали работать и моды: системный пакет нельзя установить поверх прошивки, а `Visualizer` без runtime-разрешения `RECORD_AUDIO` и активной сессии воспроизведения молчит.
