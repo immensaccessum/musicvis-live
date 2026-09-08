@@ -24,6 +24,8 @@ object FeaturePrefs {
     fun fxFlashOpacity(c: Context) = p(c).getInt("fx_flash_op", 100)
     fun fxColorCycle(c: Context) = p(c).getBoolean("fx_cycle", false)
     fun fxWaves(c: Context) = p(c).getBoolean("fx_waves", false)
+    /** 0–100, peak opacity of the shockwave rings. 100 = current default. */
+    fun fxWavesOpacity(c: Context) = p(c).getInt("fx_waves_op", 100)
     fun fxTrails(c: Context) = p(c).getBoolean("fx_trails", false)
     fun party(c: Context) = p(c).getBoolean("party", false)
 
@@ -50,6 +52,7 @@ object FeaturePrefs {
     fun setFxFlashOpacity(c: Context, v: Int) = p(c).edit { putInt("fx_flash_op", v.coerceIn(0, 100)) }
     fun setFxColorCycle(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_cycle", v) }
     fun setFxWaves(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_waves", v) }
+    fun setFxWavesOpacity(c: Context, v: Int) = p(c).edit { putInt("fx_waves_op", v.coerceIn(0, 100)) }
     fun setFxTrails(c: Context, v: Boolean) = p(c).edit { putBoolean("fx_trails", v) }
     fun setParty(c: Context, v: Boolean) = p(c).edit { putBoolean("party", v) }
 

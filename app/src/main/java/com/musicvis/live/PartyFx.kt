@@ -63,7 +63,8 @@ class PartyFx(private val context: Context) {
             if (age < 0f) continue
             val fade = 1f - age
             ringPaint.color = tint
-            ringPaint.alpha = (fade * 190f).toInt().coerceIn(0, 255)
+            val op = FeaturePrefs.fxWavesOpacity(context) / 100f
+            ringPaint.alpha = (fade * 190f * op).toInt().coerceIn(0, 255)
             ringPaint.strokeWidth = 4f + 30f * fade
             canvas.drawCircle(w / 2f, h / 2f, 60f + age * maxR, ringPaint)
             rings[i] = if (age + 0.028f >= 1f) -1f else age + 0.028f

@@ -28,6 +28,15 @@ class FxSettingsActivity : AppCompatActivity() {
             if (fromUser) FeaturePrefs.setFxFlashOpacity(this, n)
         }
 
+        val waveOp = FeaturePrefs.fxWavesOpacity(this)
+        binding.fxWavesOpacity.value = waveOp.toFloat()
+        binding.fxWavesOpacityLabel.text = getString(R.string.fx_waves_opacity, waveOp)
+        binding.fxWavesOpacity.addOnChangeListener { _, value, fromUser ->
+            val n = value.toInt()
+            binding.fxWavesOpacityLabel.text = getString(R.string.fx_waves_opacity, n)
+            if (fromUser) FeaturePrefs.setFxWavesOpacity(this, n)
+        }
+
         binding.bgGradient.setOnCheckedChangeListener { _, v -> FeaturePrefs.setBgGradient(this, v) }
         binding.fxFlash.setOnCheckedChangeListener { _, v -> FeaturePrefs.setFxFlash(this, v) }
         binding.fxCycle.setOnCheckedChangeListener { _, v -> FeaturePrefs.setFxColorCycle(this, v) }

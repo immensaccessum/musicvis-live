@@ -74,6 +74,7 @@
     <string name="fx_flash_opacity">Flash opacity: %d%%</string>
     <string name="fx_cycle">Auto color cycling (full circle ~26 s)</string>
     <string name="fx_waves">Shockwave rings on beat</string>
+    <string name="fx_waves_opacity">Ring opacity: %d%%</string>
     <string name="fx_trails">Neon trails (Spectrum and Octaves)</string>
     <string name="fx_party">Party mode</string>
     <string name="fx_party_hint">Turns on all the effects at once and boosts the bars. For the table at a party, not for battery life.</string>

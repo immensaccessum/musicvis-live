@@ -40,6 +40,7 @@ class RadialSpectrumService : VisWallpaperService() {
     private var idlePhase = 0
     private var angle = 0f
     private var lastMs = 0L
+    private var coreSmooth = 0f
     private var dispHz = 0f
     private var noteAlpha = 0f
     private var noteNames: List<String>? = null
@@ -92,10 +93,13 @@ class RadialSpectrumService : VisWallpaperService() {
             )
         }
 
-        val pulse = audio.rms * (1f - mix) + 0.1f * mix
+        val live = audio.rms.coerceIn(0f, 1f)
+        coreSmooth = if (live > coreSmooth) live else coreSmooth * 0.90f
+        val breath = 0.22f + 0.10f * sin(env.timeMs * 0.0007f)
+        val pulse = coreSmooth * (1f - mix) + breath.coerceIn(0f, 1f) * mix
         val mid = palette[palette.size / 2]
         corePaint.color = Color.argb(70, Color.red(mid), Color.green(mid), Color.blue(mid))
-        canvas.drawCircle(cx, cy, r0 * (0.55f + pulse * 0.35f), corePaint)
+        canvas.drawCircle(cx, cy, r0 * (0.40f + pulse * 0.52f), corePaint)
 
         if (FeaturePrefs.noteDisplay(this)) {
             drawNote(canvas, audio, cx, cy, r0, pulse)

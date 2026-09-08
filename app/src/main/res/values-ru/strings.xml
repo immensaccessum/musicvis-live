@@ -74,6 +74,7 @@
     <string name="fx_flash_opacity">Сила вспышки: %d%%</string>
     <string name="fx_cycle">Автосмена цвета (полный круг ~26 с)</string>
     <string name="fx_waves">Кольца от бита</string>
+    <string name="fx_waves_opacity">Сила колец: %d%%</string>
     <string name="fx_trails">Неоновые трейлы (Спектр и Октавы)</string>
     <string name="fx_party">Режим вечеринки</string>
     <string name="fx_party_hint">Включает все эффекты сразу и усиливает столбики. Для стола на вечеринке, а не для экономии батареи.</string>
