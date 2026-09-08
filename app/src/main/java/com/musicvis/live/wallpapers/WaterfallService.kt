@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import com.musicvis.live.HistogramColors
 import com.musicvis.live.PaletteCache
 import kotlin.math.exp
 import kotlin.math.ln
@@ -44,8 +45,12 @@ class WaterfallService : VisWallpaperService() {
     private fun fillTopRow(env: PaintEnv) {
         val palette = pal.colors
         val raw = env.audio.fftRaw
-        if (raw.size < 8 || env.audio.audioIdle) {
-            java.util.Arrays.fill(model, 0, cols, palette.firstOrNull()?.let { dim(it) } ?: Color.BLACK)
+        val mix = env.audio.idleMix()
+        val dimC = palette.firstOrNull()?.let { dim(it) } ?: Color.BLACK
+        if (raw.size < 8) {
+            for (x in 0 until cols) {
+                model[x] = HistogramColors.lerpColor(model[x], dimC, 0.12f + 0.88f * mix)
+            }
             return
         }
         val bins = raw.size / 2
@@ -57,14 +62,14 @@ class WaterfallService : VisWallpaperService() {
             val re = raw[b * 2].toInt()
             val im = raw[b * 2 + 1].toInt()
             val m = (sqrt((re * re + im * im).toFloat()) / 170f).coerceIn(0f, 1f)
-            // 0 -> black, 1 -> center (brightest) of the gradient
             val c = palette[(m * (half - 1)).toInt().coerceIn(0, palette.size - 1)]
             val v = m.coerceIn(0f, 1f)
-            model[x] = Color.rgb(
+            val live = Color.rgb(
                 (Color.red(c) * v).toInt(),
                 (Color.green(c) * v).toInt(),
                 (Color.blue(c) * v).toInt()
             )
+            model[x] = if (mix < 0.001f) live else HistogramColors.lerpColor(live, dimC, mix)
         }
     }
 

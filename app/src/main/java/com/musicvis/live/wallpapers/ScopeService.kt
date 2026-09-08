@@ -52,28 +52,24 @@ class ScopeService : VisWallpaperService() {
 
         val mid = h / 2f + env.tiltY * 20f
         path.reset()
-        if (env.audio.audioIdle) {
-            val t = env.timeMs * 0.002f
-            for (i in 0 until 256) {
-                val x = i * w / 255f
-                val y = mid + sin(i * 0.09f + t) * sin(i * 0.017f - t * 0.6f) * h * 0.08f
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-        } else {
-            val pcm = env.audio.pcm
-            val n = pcm.size
-            val step = if (env.preview) 8 else 2
-            var first = true
-            var i = 0
-            while (i < n) {
-                val x = i * w / (n - 1)
-                val y = mid + pcm[i] / 128f * h * 0.28f
-                if (first) {
-                    path.moveTo(x, y)
-                    first = false
-                } else path.lineTo(x, y)
-                i += step
-            }
+        val mix = env.audio.idleMix()
+        val pcm = env.audio.pcm
+        val n = pcm.size
+        val t = env.timeMs * 0.002f
+        val step = if (env.preview) 8 else 2
+        var first = true
+        var i = 0
+        while (i < n) {
+            val x = i * w / (n - 1)
+            val yLive = mid + pcm[i] / 128f * h * 0.28f
+            val fi = i * 256f / (n - 1)
+            val yIdle = mid + sin(fi * 0.09f + t) * sin(fi * 0.017f - t * 0.6f) * h * 0.08f
+            val y = yLive * (1f - mix) + yIdle * mix
+            if (first) {
+                path.moveTo(x, y)
+                first = false
+            } else path.lineTo(x, y)
+            i += step
         }
         canvas.drawPath(path, glow)
         canvas.drawPath(path, line)

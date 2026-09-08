@@ -36,6 +36,22 @@ class AudioEngine private constructor(context: Context) {
         private set
     @Volatile var audioIdle = true
         private set
+
+    /**
+     * 0 = live audio, 1 = waiting animation. Ramps over ~1.5 s into idle
+     * and ~0.3 s back, so the visualizer never snaps on a single frame.
+     */
+    fun idleMix(): Float {
+        val now = System.currentTimeMillis()
+        if (now != idleAmtMs) {
+            val dt = if (idleAmtMs == 0L) 0.016f else ((now - idleAmtMs) / 1000f).coerceAtMost(0.05f)
+            idleAmtMs = now
+            val tau = if (idleTarget > idleAmt) 1.5f else 0.28f
+            idleAmt += (idleTarget - idleAmt) * (dt / tau).coerceIn(0f, 1f)
+            if (kotlin.math.abs(idleAmt - idleTarget) < 0.003f) idleAmt = idleTarget
+        }
+        return idleAmt
+    }
     @Volatile var waveform = FloatArray(WAVE_POINTS) { 0.5f }
         private set
     @Volatile var spectrum = FloatArray(BANDS)
@@ -72,6 +88,9 @@ class AudioEngine private constructor(context: Context) {
     private var attachedSession = Int.MIN_VALUE
     private var peakHoldUntil = 0L
     private var lastSignalMs = 0L
+    private var idleTarget = 1f
+    private var idleAmt = 1f
+    private var idleAmtMs = 0L
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
@@ -95,6 +114,9 @@ class AudioEngine private constructor(context: Context) {
         running = true
         lastSignalMs = System.currentTimeMillis()
         audioIdle = false
+        idleTarget = 0f
+        idleAmt = 0f
+        idleAmtMs = 0L
         startCapture()
     }
 
@@ -104,6 +126,8 @@ class AudioEngine private constructor(context: Context) {
         waveform = FloatArray(WAVE_POINTS) { 0.5f }
         pcm = IntArray(1024)
         audioIdle = true
+        idleTarget = 1f
+        idleAmt = 1f
         fftRaw = ByteArray(0)
         rms = 0f
         rmsRaw = 0f
@@ -242,7 +266,9 @@ class AudioEngine private constructor(context: Context) {
         pcm = out
         val now = System.currentTimeMillis()
         if (!silent) lastSignalMs = now
-        audioIdle = silent && (now - lastSignalMs > 3000)
+        val wantIdle = silent && (now - lastSignalMs > 3000)
+        audioIdle = wantIdle
+        idleTarget = if (wantIdle) 1f else 0f
 
         for (i in 0 until WAVE_POINTS) {
             val v = out[(i * 1024) / WAVE_POINTS] / 128f

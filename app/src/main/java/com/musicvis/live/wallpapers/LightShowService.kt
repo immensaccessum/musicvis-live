@@ -37,16 +37,16 @@ class LightShowService : VisWallpaperService() {
         var bass = 0f
         var mid = 0f
         var high = 0f
-        if (audio.audioIdle) {
-            idlePhase++
-            bass = 0.25f + 0.2f * sin(idlePhase * 0.017f)
-            mid = 0.25f + 0.2f * sin(idlePhase * 0.023f + 2f)
-            high = 0.25f + 0.2f * sin(idlePhase * 0.011f + 4f)
-        } else {
-            val s = audio.spectrum
-            for (i in 0..3) bass = max(bass, s[i])
-            for (i in 4..14) mid = max(mid, s[i])
-            for (i in 15 until s.size) high = max(high, s[i])
+        val s = audio.spectrum
+        for (i in 0..3) bass = max(bass, s[i])
+        for (i in 4..14) mid = max(mid, s[i])
+        for (i in 15 until s.size) high = max(high, s[i])
+        idlePhase++
+        val mix = audio.idleMix()
+        if (mix > 0.001f) {
+            bass = bass * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.017f)) * mix
+            mid = mid * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.023f + 2f)) * mix
+            high = high * (1f - mix) + (0.25f + 0.2f * sin(idlePhase * 0.011f + 4f)) * mix
         }
         // Fast attack, slow release per zone.
         levels[0] = if (bass > levels[0]) bass else levels[0] * 0.93f

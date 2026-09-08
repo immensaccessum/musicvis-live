@@ -44,6 +44,7 @@ abstract class GlBarWallpaperService : WallpaperService() {
         private var posted = false
         private var eglReady = false
         private val heights = FloatArray(BarGlRenderer.BARS)
+        private val idleBuf = FloatArray(BarGlRenderer.BARS)
         private val analyzer = FloatArray(256)
         private val logDecay = FloatArray(BarGlRenderer.BARS)
         @Volatile private var xOffset = 0.5f
@@ -185,26 +186,32 @@ abstract class GlBarWallpaperService : WallpaperService() {
 
         private fun fillHeights() {
             val n = heights.size
-            if (audio.audioIdle) {
-                idleHeights()
-                return
-            }
-            when (mode) {
-                Mode.PCM -> {
-                    val pcm = audio.pcm
-                    for (i in 0 until n) {
-                        heights[i] = (abs(pcm[i * pcm.size / n]) / 128f).coerceIn(0f, 1f) * 0.55f
+            val mix = audio.idleMix()
+            if (mix < 0.999f) {
+                when (mode) {
+                    Mode.PCM -> {
+                        val pcm = audio.pcm
+                        for (i in 0 until n) {
+                            heights[i] = (abs(pcm[i * pcm.size / n]) / 128f).coerceIn(0f, 1f) * 0.55f
+                        }
                     }
+                    Mode.FFT -> fftHeights()
+                    Mode.OCTAVE -> octaveHeights()
                 }
-                Mode.FFT -> fftHeights()
-                Mode.OCTAVE -> octaveHeights()
+            }
+            if (mix > 0.001f) {
+                fillIdle(idleBuf)
+                val live = 1f - mix
+                for (i in 0 until n) {
+                    heights[i] = heights[i] * live + idleBuf[i] * mix
+                }
             }
         }
 
         private fun octaveHeights() {
             val raw = audio.fftRaw
             if (raw.size < 8) {
-                idleHeights()
+                for (i in heights.indices) heights[i] *= 0.88f
                 return
             }
             val bins = raw.size / 2
@@ -226,7 +233,7 @@ abstract class GlBarWallpaperService : WallpaperService() {
         private fun fftHeights() {
             val raw = audio.fftRaw
             if (raw.size < 8) {
-                idleHeights()
+                for (i in heights.indices) heights[i] *= 0.88f
                 return
             }
             val half = raw.size / 2
@@ -254,8 +261,8 @@ abstract class GlBarWallpaperService : WallpaperService() {
             }
         }
 
-        private fun idleHeights() {
-            val n = heights.size
+        private fun fillIdle(out: FloatArray) {
+            val n = out.size
             val amp1 = sin(0.007f * a1) * 0.45f
             val amp2 = sin(0.023f * a2) * 0.28f
             val amp3 = sin(0.011f * a3) * 0.12f
@@ -263,7 +270,7 @@ abstract class GlBarWallpaperService : WallpaperService() {
                 val mag = abs(
                     sin(0.013f * (w1 + i)) * amp1 + sin(0.029f * (w2 + i)) * amp2
                 ) + abs(sin(0.017f * (w4 + i)) * amp3)
-                heights[i] = mag.coerceIn(0f, 0.7f)
+                out[i] = mag.coerceIn(0f, 0.7f)
             }
             w1++; a1++; w2--; a2++; w3++; a3++; w4++; a4++
         }

@@ -44,11 +44,9 @@ class VuMeterService : VisWallpaperService() {
         val h = canvas.height.toFloat()
         env.bg.draw(canvas, env.audio, Color.rgb(8, 10, 16))
 
-        val target = if (audio.audioIdle) {
-            0.08f + 0.04f * sin(env.timeMs / 900f)
-        } else {
-            audio.rms.coerceIn(0f, 1f)
-        }
+        val targetIdle = 0.08f + 0.04f * sin(env.timeMs / 900f)
+        val mix = audio.idleMix()
+        val target = audio.rms.coerceIn(0f, 1f) * (1f - mix) + targetIdle * mix
         // VU ballistics: fast attack, slow release
         needle += if (target > needle) (target - needle) * 0.25f else (target - needle) * 0.06f
 

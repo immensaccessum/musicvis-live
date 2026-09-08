@@ -114,6 +114,7 @@ class FftLabActivity : AppCompatActivity() {
         private var bgColors: IntArray? = null
         private var bgLevel = 0f
         private val heights = FloatArray(BarGlRenderer.BARS)
+        private val idleBuf = FloatArray(BarGlRenderer.BARS)
         private val analyzer = FloatArray(256)
         private var w1 = 0; private var a1 = 0
         private var w2 = 0; private var a2 = 0
@@ -154,35 +155,41 @@ class FftLabActivity : AppCompatActivity() {
 
         private fun fill() {
             val n = heights.size
+            val mix = audio.idleMix()
             val raw = audio.fftRaw
-            if (audio.audioIdle || raw.size < 8) {
+            if (mix < 0.999f && raw.size >= 8) {
+                val len = (raw.size / 4).coerceAtMost(analyzer.size)
+                for (i in 1 until len - 1) {
+                    val re = raw[i * 2].toInt()
+                    val im = raw[i * 2 + 1].toInt()
+                    var neu = (re * re + im * im) * (i / 16 + 1)
+                    val old = analyzer[i]
+                    if (neu < old - 800) neu = (old - 800).toInt()
+                    analyzer[i] = neu.toFloat()
+                }
+                var src = 1
+                var cnt = 0
+                for (i in 0 until n) {
+                    heights[i] = (analyzer[src.coerceAtMost(len - 1)] / 8000f).coerceIn(0f, 0.92f)
+                    cnt += len
+                    if (cnt > n) {
+                        src++
+                        cnt -= n
+                    }
+                }
+            } else if (mix < 0.999f) {
+                for (i in 0 until n) heights[i] *= 0.88f
+            }
+            if (mix > 0.001f) {
                 val amp1 = sin(0.007f * a1) * 0.45f
                 val amp2 = sin(0.023f * a2) * 0.28f
                 for (i in 0 until n) {
-                    heights[i] = abs(sin(0.013f * (w1 + i)) * amp1 + sin(0.029f * (w2 + i)) * amp2)
+                    idleBuf[i] = abs(sin(0.013f * (w1 + i)) * amp1 + sin(0.029f * (w2 + i)) * amp2)
                         .coerceIn(0f, 0.7f)
                 }
                 w1++; a1++; w2--; a2++
-                return
-            }
-            val len = (raw.size / 4).coerceAtMost(analyzer.size)
-            for (i in 1 until len - 1) {
-                val re = raw[i * 2].toInt()
-                val im = raw[i * 2 + 1].toInt()
-                var neu = (re * re + im * im) * (i / 16 + 1)
-                val old = analyzer[i]
-                if (neu < old - 800) neu = (old - 800).toInt()
-                analyzer[i] = neu.toFloat()
-            }
-            var src = 1
-            var cnt = 0
-            for (i in 0 until n) {
-                heights[i] = (analyzer[src.coerceAtMost(len - 1)] / 8000f).coerceIn(0f, 0.92f)
-                cnt += len
-                if (cnt > n) {
-                    src++
-                    cnt -= n
-                }
+                val live = 1f - mix
+                for (i in 0 until n) heights[i] = heights[i] * live + idleBuf[i] * mix
             }
         }
     }

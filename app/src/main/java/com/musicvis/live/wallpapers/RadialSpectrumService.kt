@@ -56,16 +56,15 @@ class RadialSpectrumService : VisWallpaperService() {
         // Slow base rotation that speeds up on loud moments.
         val dt = if (lastMs == 0L) 0f else (env.timeMs - lastMs).coerceAtMost(100L) / 1000f
         lastMs = env.timeMs
-        val loud = if (audio.audioIdle) 0f else audio.rms.coerceIn(0f, 1f)
+        val mix = audio.idleMix()
+        val loud = audio.rms.coerceIn(0f, 1f) * (1f - mix)
         angle += (0.03f + loud * loud * 0.9f) * dt
         val rot = angle + (env.xOffset - 0.5f) * 0.8f
 
         for (i in 0 until BARS) {
-            val target = if (audio.audioIdle) {
-                0.12f + 0.10f * sin(i * 0.35f + env.timeMs * 0.0016f)
-            } else {
-                sampleBand(spectrum, i)
-            }.coerceIn(0f, 1f)
+            val live = sampleBand(spectrum, i)
+            val idle = 0.12f + 0.10f * sin(i * 0.35f + env.timeMs * 0.0016f)
+            val target = (live * (1f - mix) + idle * mix).coerceIn(0f, 1f)
             val old = smooth[i]
             smooth[i] = if (target > old) target else old * 0.90f
             val len = r0 * 0.15f + smooth[i] * rMax
@@ -81,7 +80,7 @@ class RadialSpectrumService : VisWallpaperService() {
             )
         }
 
-        val pulse = if (audio.audioIdle) 0.1f else audio.rms
+        val pulse = audio.rms * (1f - mix) + 0.1f * mix
         val mid = palette[palette.size / 2]
         corePaint.color = Color.argb(70, Color.red(mid), Color.green(mid), Color.blue(mid))
         canvas.drawCircle(cx, cy, r0 * (0.55f + pulse * 0.35f), corePaint)

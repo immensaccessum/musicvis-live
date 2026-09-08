@@ -24,7 +24,13 @@ class DotsService : VisWallpaperService() {
         phase++
         if (phase % 2 == 0) {
             val src = env.audio.waveform
-            val copy = if (env.audio.audioIdle) idleRow(env.timeMs) else src.copyOf()
+            val mix = env.audio.idleMix()
+            val copy = if (mix < 0.001f) {
+                src.copyOf()
+            } else {
+                val idle = idleRow(env.timeMs)
+                FloatArray(src.size) { i -> src[i] * (1f - mix) + idle[i] * mix }
+            }
             history.addLast(copy)
             while (history.size > ROWS) history.removeFirst()
         }
